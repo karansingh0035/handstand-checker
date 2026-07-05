@@ -1,0 +1,231 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0a0a0a;
+  background-image:
+    radial-gradient(ellipse 900px 600px at 15% -10%, rgba(255, 90, 31, 0.28), transparent 60%),
+    radial-gradient(ellipse 800px 700px at 105% 15%, rgba(255, 140, 66, 0.16), transparent 55%),
+    radial-gradient(ellipse 1000px 800px at 50% 120%, rgba(255, 90, 31, 0.14), transparent 60%),
+    linear-gradient(180deg, #0a0a0a 0%, #0d0a08 100%);
+  background-attachment: fixed;
+  color: #ffffff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 900px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+}
+
+.text {
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.upload-bar {
+  width: 100%;
+  max-width: 500px;
+}
+
+.box {
+  background-color: rgba(20, 18, 16, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px dashed rgba(255, 90, 31, 0.35);
+  border-radius: 20px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.box:hover {
+  border-color: rgba(255, 90, 31, 0.55);
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 🔘 Icon buttons: previously these were raw <img> tags pointing at
+   plus.svg / upload.svg, whose actual appearance we can't see or control.
+   They're now real <button> elements with hand-coded inline SVGs, so the
+   shape and color are guaranteed instead of guessed. */
+.icon-btn {
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #211d1a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.icon-btn:hover {
+  transform: scale(1.06);
+  background-color: #ff5a1f;
+  box-shadow: 0 0 18px rgba(255, 90, 31, 0.55);
+}
+
+.icon-btn:active {
+  transform: scale(0.96);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid #ff5a1f;
+  outline-offset: 2px;
+}
+
+.text2 {
+  flex-grow: 1;
+  background-color: #1c1a18;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: #ffffff;
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.text2::placeholder {
+  color: #6b6560;
+}
+
+.text2:focus {
+  outline: none;
+  border-color: #ff5a1f;
+  box-shadow: 0 0 0 3px rgba(255, 90, 31, 0.15);
+}
+
+.preview-container {
+  display: flex;
+  justify-content: center;
+}
+
+.thumbnail-wrapper {
+  position: relative;
+  width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Analysis Section Styles */
+.analysis-workspace {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.canvas-wrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background-color: #111111;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 90, 31, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+#analysis-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dashboard-row {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+}
+
+.data-card {
+  background-color: rgba(20, 18, 16, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  flex: 1;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.card-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #666666;
+  letter-spacing: 1px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.score-display {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #ff5a1f;
+}
+
+.score-total {
+  font-size: 1.5rem;
+  color: #444444;
+}
+
+.advice-card p {
+  color: #cccccc;
+  line-height: 1.6;
+  font-size: 1rem;
+}

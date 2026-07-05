@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CaliXAi-form check</title>
+    <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<!-- ✅ Match the version explicitly here as well -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script src="handstand.js" defer></script>
+<script src="app.js" defer></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="text">
+        <span>Check your form</span>
+      </div>
+      <div class="upload-bar">
+        <div class="box" id="main-box">
+          <!-- 🎞️ THE VIDEO THUMBNAIL CAPSULE (Hidden by default) -->
+          <div
+            class="preview-container"
+            id="preview-container"
+            style="display: none"
+          >
+            <div class="thumbnail-wrapper">
+              <video id="preview-video" muted></video>
+              <button type="button" class="remove-btn" id="remove-btn">
+                &times;
+              </button>
+            </div>
+          </div>
+
+          <!-- 🛠️ THE BOTTOM INTERACTION ROW -->
+          <div class="input-row">
+            <button type="button" class="icon-btn" id="plus" aria-label="Add video">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <input
+              type="text"
+              id="skill-input"
+              class="text2"
+              placeholder="Name of your skill"
+              autocomplete="off"
+            />
+            <input
+              type="file"
+              id="hidden-video-input"
+              accept="video/*"
+              style="display: none"
+            />
+            <button type="button" class="icon-btn" id="upload" aria-label="Upload and scan">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        class="analysis-workspace"
+        id="analysis-workspace"
+        style="display: none"
+      >
+        <div class="canvas-wrapper">
+          <!-- The visual canvas overlay layer where we will draw tracking lines -->
+          <canvas id="analysis-canvas"></canvas>
+        </div>
+        <div class="dashboard-row">
+          <!-- Form Rating Panel -->
+          <div class="data-card score-card">
+            <span class="card-label">FORM SCORE</span>
+            <div class="score-display">
+              <span id="form-score-value">--</span
+              ><span class="score-total">/100</span>
+            </div>
+          </div>
+
+          <!-- AI Coaching Advice Box -->
+          <div class="data-card advice-card">
+            <span class="card-label">AI COACHING INSIGHTS</span>
+            <p id="coaching-advice">
+              Awaiting video upload to run biomechanical analysis...
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
