@@ -47,7 +47,17 @@ module.exports = async function handler(req, res) {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.4,   // Lower temperature: consistent, grounded coaching tone, not creative flair
-          maxOutputTokens: 200,
+          maxOutputTokens: 400,
+          // 🎯 IMPORTANT: gemini-2.5-flash has "thinking" enabled by default,
+          // and those internal reasoning tokens count against
+          // maxOutputTokens. For a short, simple task like this, that
+          // silently ate almost the entire budget before any visible text
+          // was written, causing responses to cut off mid-sentence. We don't
+          // need step-by-step reasoning here, so thinking is disabled
+          // entirely — thinkingBudget: 0 means all tokens go to the actual answer.
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
         },
       }),
     });
@@ -60,7 +70,12 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await geminiResponse.json();
-    const adviceText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const candidate = data?.candidates?.[0];
+    const adviceText = candidate?.content?.parts?.[0]?.text?.trim();
+
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      console.warn("Gemini response was cut off by the token limit — consider raising maxOutputTokens further.");
+    }
 
     if (!adviceText) {
       res.status(502).json({ error: "Coaching advice service returned an empty response." });
