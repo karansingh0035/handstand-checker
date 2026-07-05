@@ -30,6 +30,20 @@ let processingVideoElement = null;
 // final, stable result instead.
 let landmarkHistory = [];      // All frames' landmarks collected across the whole clip
 let analysisFinalized = false; // Guards against scoring more than once per video
+let activeSkillConfig = null;  // Which skill's scoring function to run for THIS upload
+
+// 🗂️ SKILL REGISTRY — maps a typed skill name to its scoring function.
+// Right now only handstand is implemented; adding a new skill later
+// (Phase 8) is just adding another entry here, plus its own scoreXyz()
+// function in its own file — nothing else in this flow needs to change.
+const SKILL_ANALYZERS = {
+  "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
+};
+
+function resolveSkill(rawInput) {
+  const key = rawInput.trim().toLowerCase();
+  return SKILL_ANALYZERS[key] || null;
+}
 
 // 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE
 function initMediaPipe() {
@@ -81,7 +95,7 @@ async function runFinalFormScoring() {
   if (analysisFinalized) return; // Never score the same video twice
   analysisFinalized = true;
 
-  const result = scoreHandstand(
+  const result = activeSkillConfig.scoreFn(
     landmarkHistory,
     processingVideoElement.videoWidth,
     processingVideoElement.videoHeight
@@ -257,12 +271,28 @@ uploadBtn.addEventListener("click", () => {
     return;
   }
 
+  // 🎯 Only proceed if the typed skill name actually matches a skill we have
+  // a scoring function for. Previously this ran the handstand checker
+  // regardless of what (or whether anything) was typed here — now it won't
+  // silently misanalyze an unrelated skill as a handstand.
+  const skillConfig = resolveSkill(skillInput.value);
+  if (!skillConfig) {
+    const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
+    alert(
+      skillInput.value.trim()
+        ? `"${skillInput.value.trim()}" isn't supported yet. Currently supported: ${supportedList}.`
+        : `Please type the name of your skill first. Currently supported: ${supportedList}.`
+    );
+    return;
+  }
+  activeSkillConfig = skillConfig;
+
   // 🔄 Reset scoring state in case this isn't the user's first upload —
   // otherwise a previous video's buffered landmarks would bleed into this one.
   landmarkHistory = [];
   analysisFinalized = false;
   formScoreValue.textContent = "--";
-  coachingAdvice.textContent = "Analyzing your handstand...";
+  coachingAdvice.textContent = `Analyzing your ${activeSkillConfig.label.toLowerCase()}...`;
 
   // Transition UI states instantly
   mainTitle.style.display = "none";

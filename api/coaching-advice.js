@@ -13,9 +13,51 @@
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// 🛡️ RATE LIMITING
+// This is an IN-MEMORY limiter — it lives in this function instance's
+// memory, which Vercel may reuse across nearby requests ("warm" instances)
+// but does NOT guarantee persistence: a cold start, a scale-up to multiple
+// instances, or traffic hitting a different region resets or splits this
+// state. In practice that means a determined abuser COULD get more than
+// this limit through by getting routed to fresh instances. This is a
+// reasonable first line of defense for a small/hobby-scale deployment —
+// it stops casual accidental hammering (e.g. a bug in the frontend retrying
+// in a loop) — but if this app gets real traffic or becomes a cost concern,
+// the correct upgrade is a shared store like Vercel KV or Upstash Redis,
+// which all instances read/write to consistently.
+const requestLog = new Map(); // ip -> array of request timestamps (ms)
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
+const RATE_LIMIT_MAX_REQUESTS = 5;      // Max requests per IP per window
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const recentTimestamps = (requestLog.get(ip) || []).filter(
+    (t) => now - t < RATE_LIMIT_WINDOW_MS
+  );
+  recentTimestamps.push(now);
+  requestLog.set(ip, recentTimestamps);
+  return recentTimestamps.length > RATE_LIMIT_MAX_REQUESTS;
+}
+
+function getClientIp(req) {
+  // Vercel sets x-forwarded-for; it can contain a comma-separated chain if
+  // the request passed through proxies, so take the first (original client) entry.
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  return req.socket?.remoteAddress || "unknown";
+}
+
+const MAX_FAULTS_ACCEPTED = 10; // Defensive cap — no legitimate skill check should ever produce more than this
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Only POST requests are allowed." });
+    return;
+  }
+
+  const clientIp = getClientIp(req);
+  if (isRateLimited(clientIp)) {
+    res.status(429).json({ error: "Too many requests. Please wait a moment before trying again." });
     return;
   }
 
@@ -27,6 +69,10 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Defensive cap: even if something upstream is misbehaving, never let an
+  // oversized faults array balloon the prompt (and therefore the cost) sent to Gemini.
+  const cappedFaults = faults.slice(0, MAX_FAULTS_ACCEPTED);
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error("GEMINI_API_KEY environment variable is not set.");
@@ -34,7 +80,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const prompt = buildPrompt(score, faults);
+  const prompt = buildPrompt(score, cappedFaults);
 
   try {
     const geminiResponse = await fetch(GEMINI_ENDPOINT, {
