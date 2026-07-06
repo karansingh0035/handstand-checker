@@ -38,6 +38,7 @@ let activeSkillConfig = null;  // Which skill's scoring function to run for THIS
 const SKILL_ANALYZERS = {
   "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
   "pushup": { scoreFn: scorePushup, label: "Push-up" },
+  "lsit": { scoreFn: scoreLsit, label: "L-sit" },
 };
 
 function resolveSkill(rawInput) {

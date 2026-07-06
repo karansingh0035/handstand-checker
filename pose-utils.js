@@ -107,6 +107,26 @@ function medianLandmark(frames, index) {
   };
 }
 
+// Like medianLandmark, but built on getEffectiveJoints instead of a single
+// raw landmark index — so it inherits the side-aware selection (real
+// visible-side point instead of a hidden-side guess) for any static-hold
+// skill (handstand, L-sit, ...) that scores one representative pose across
+// the whole clip. jointKey is one of getEffectiveJoints' resolved keys, e.g.
+// "hipMid", "shoulderMid", "elbowMid".
+function medianJointPoint(frames, videoWidth, videoHeight, jointKey) {
+  const points = frames
+    .map((frame) => getEffectiveJoints(frame, videoWidth, videoHeight))
+    .filter((joints) => joints && joints[jointKey])
+    .map((joints) => joints[jointKey]);
+
+  if (points.length === 0) return null;
+
+  return {
+    x: median(points.map((p) => p.x)),
+    y: median(points.map((p) => p.y)),
+  };
+}
+
 // Builds a confidence-check function for a specific set of required
 // landmark indices. Different skills care about different joints (e.g. a
 // push-up cares about the same joints as a handstand), so this is
@@ -159,6 +179,7 @@ function getEffectiveJoints(landmarks, videoWidth, videoHeight) {
     // Single-side "mid" points are just that side's real point — more
     // accurate than blending with a hidden-side guess.
     shoulderMid: shoulder,
+    elbowMid: elbow,
     hipMid: hip,
     kneeMid: knee,
     ankleMid: ankle,
@@ -191,6 +212,7 @@ function getPixelJoints(landmarks, videoWidth, videoHeight) {
     leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist,
     leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle,
     shoulderMid: midpoint(leftShoulder, rightShoulder),
+    elbowMid: midpoint(leftElbow, rightElbow),
     hipMid: midpoint(leftHip, rightHip),
     kneeMid: midpoint(leftKnee, rightKnee),
     ankleMid: midpoint(leftAnkle, rightAnkle),
