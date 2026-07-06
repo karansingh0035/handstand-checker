@@ -16,8 +16,9 @@ body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start; /* Anchor to top — centering could make tall content (long advice text) load mid-scroll */
   min-height: 100vh;
+  padding-top: 6vh;
 }
 
 .container {
@@ -191,6 +192,7 @@ body {
   display: flex;
   gap: 20px;
   width: 100%;
+  align-items: flex-start; /* Cards size to their own content, not stretched to match each other */
 }
 
 .data-card {
@@ -228,4 +230,52 @@ body {
   color: #cccccc;
   line-height: 1.6;
   font-size: 1rem;
+}
+
+/* 📱 MOBILE RESPONSIVENESS
+   Below this width, side-by-side cards get too cramped — the advice text
+   wraps into a narrow tall column while the score card (much shorter
+   content) either looks stretched-empty or awkwardly squeezed next to it.
+   Stacking them vertically is the standard, cleaner pattern here. */
+@media (max-width: 640px) {
+  .container {
+    padding: 16px;
+    gap: 20px;
+  }
+
+  .text {
+    font-size: 1.9rem;
+  }
+
+  .box {
+    padding: 16px;
+  }
+
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .dashboard-row {
+    flex-direction: column;
+  }
+
+  .data-card {
+    width: 100%;
+  }
+
+  .score-display {
+    font-size: 2.5rem;
+  }
+}
+
+/* 📱 Extra-small phones — a bit more breathing room saved without feeling cramped */
+@media (max-width: 380px) {
+  .text {
+    font-size: 1.6rem;
+  }
+
+  .container {
+    padding: 12px;
+  }
 }
