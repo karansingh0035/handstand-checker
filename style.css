@@ -64,6 +64,14 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  /* 🎯 FIX: without this, the row's intrinsic min-width is the sum of its
+     children's natural sizes, and a flex item's default min-width is
+     "auto" (its content size), not 0. On narrow phone screens that meant
+     the row as a whole refused to shrink small enough, so it silently
+     overflowed the box's padding — the upload button visually spilled past
+     the dashed border edge instead of the input field shrinking to make
+     room for it. */
+  min-width: 0;
 }
 
 /* 🔘 Icon buttons: previously these were raw <img> tags pointing at
@@ -108,6 +116,16 @@ body {
 
 .text2 {
   flex-grow: 1;
+  /* 🎯 FIX: this is the actual culprit for the mobile overflow. A text
+     input's default min-width is "auto", which resolves to its intrinsic
+     content width (roughly the browser's default ~20-character sizing),
+     NOT 0. Inside a flex row, that means this input refused to shrink
+     below that width no matter how little room was left — instead of the
+     input compressing on a narrow phone screen, the upload button next to
+     it got pushed outside the box's padding/border. Setting min-width: 0
+     lets flex-grow/shrink actually govern this element's width instead of
+     its own content size winning out. */
+  min-width: 0;
   background-color: #1c1a18;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -276,5 +294,17 @@ body {
 
   .container {
     padding: 12px;
+  }
+
+  /* 🎯 FIX: at this width, even a shrunk input plus two 40px circular
+     buttons plus gaps can get tight enough that padding alone isn't
+     enough breathing room — trimming the input's own horizontal padding
+     a bit here keeps the upload button from crowding the edge. */
+  .text2 {
+    padding: 12px 12px;
+  }
+
+  .input-row {
+    gap: 10px;
   }
 }
