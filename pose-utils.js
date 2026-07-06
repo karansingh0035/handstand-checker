@@ -23,6 +23,26 @@ const POSE_LANDMARKS = {
 
 const MIN_VISIBILITY = 0.5; // Below this, a landmark is too unreliable to trust
 
+// Per-side landmark groupings. Needed because a video filmed side-on (the
+// natural angle for push-ups, since it's the only angle that actually shows
+// elbow bend depth and hip sag/pike) will have the far side of the body
+// partially hidden behind the torso for the whole clip — MediaPipe still
+// emits a low-confidence guess for those hidden points rather than nothing,
+// so code has to explicitly check visibility per side instead of assuming
+// both sides are equally trustworthy every frame.
+const LEFT_SIDE_LANDMARKS = [
+  POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.LEFT_ELBOW, POSE_LANDMARKS.LEFT_WRIST,
+  POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.LEFT_KNEE, POSE_LANDMARKS.LEFT_ANKLE,
+];
+const RIGHT_SIDE_LANDMARKS = [
+  POSE_LANDMARKS.RIGHT_SHOULDER, POSE_LANDMARKS.RIGHT_ELBOW, POSE_LANDMARKS.RIGHT_WRIST,
+  POSE_LANDMARKS.RIGHT_HIP, POSE_LANDMARKS.RIGHT_KNEE, POSE_LANDMARKS.RIGHT_ANKLE,
+];
+
+function isSideVisible(landmarks, sideIndices) {
+  return sideIndices.every((i) => landmarks[i] && landmarks[i].visibility >= MIN_VISIBILITY);
+}
+
 // Angle at point b, formed by rays b->a and b->c, in degrees.
 // 180° means a-b-c are in a straight line.
 function angleBetween(a, b, c) {
@@ -96,6 +116,54 @@ function makeConfidenceChecker(requiredIndices) {
     return requiredIndices.every(
       (index) => landmarks[index] && landmarks[index].visibility >= MIN_VISIBILITY
     );
+  };
+}
+
+// Like getPixelJoints, but side-aware: if only one side of the body is
+// confidently visible this frame (the normal case for a side-on push-up
+// video), that side's own points are returned directly instead of being
+// midpointed with a low-confidence guess from the hidden side. Falls back
+// to the full bilateral midpoint when both sides are visible (e.g. a
+// front-on video). Returns null if NEITHER side is confidently visible.
+function getEffectiveJoints(landmarks, videoWidth, videoHeight) {
+  const leftVisible = isSideVisible(landmarks, LEFT_SIDE_LANDMARKS);
+  const rightVisible = isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+  if (!leftVisible && !rightVisible) return null;
+
+  if (leftVisible && rightVisible) {
+    return getPixelJoints(landmarks, videoWidth, videoHeight);
+  }
+
+  const side = leftVisible ? "LEFT" : "RIGHT";
+  const px = (index) => toPixelSpace(landmarks[index], videoWidth, videoHeight);
+  const shoulder = px(POSE_LANDMARKS[`${side}_SHOULDER`]);
+  const elbow = px(POSE_LANDMARKS[`${side}_ELBOW`]);
+  const wrist = px(POSE_LANDMARKS[`${side}_WRIST`]);
+  const hip = px(POSE_LANDMARKS[`${side}_HIP`]);
+  const knee = px(POSE_LANDMARKS[`${side}_KNEE`]);
+  const ankle = px(POSE_LANDMARKS[`${side}_ANKLE`]);
+
+  return {
+    leftShoulder: side === "LEFT" ? shoulder : null,
+    rightShoulder: side === "RIGHT" ? shoulder : null,
+    leftElbow: side === "LEFT" ? elbow : null,
+    rightElbow: side === "RIGHT" ? elbow : null,
+    leftWrist: side === "LEFT" ? wrist : null,
+    rightWrist: side === "RIGHT" ? wrist : null,
+    leftHip: side === "LEFT" ? hip : null,
+    rightHip: side === "RIGHT" ? hip : null,
+    leftKnee: side === "LEFT" ? knee : null,
+    rightKnee: side === "RIGHT" ? knee : null,
+    leftAnkle: side === "LEFT" ? ankle : null,
+    rightAnkle: side === "RIGHT" ? ankle : null,
+    // Single-side "mid" points are just that side's real point — more
+    // accurate than blending with a hidden-side guess.
+    shoulderMid: shoulder,
+    hipMid: hip,
+    kneeMid: knee,
+    ankleMid: ankle,
+    wristMid: wrist,
+    visibleSide: side,
   };
 }
 

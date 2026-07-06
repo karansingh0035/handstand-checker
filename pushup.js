@@ -15,15 +15,14 @@
 // private to this file and can never collide with another skill file's
 // same-named internals — only scorePushup itself is exposed globally.
 const scorePushup = (function () {
-  const REQUIRED_LANDMARKS = [
-    POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.RIGHT_SHOULDER,
-    POSE_LANDMARKS.LEFT_ELBOW, POSE_LANDMARKS.RIGHT_ELBOW,
-    POSE_LANDMARKS.LEFT_WRIST, POSE_LANDMARKS.RIGHT_WRIST,
-    POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.RIGHT_HIP,
-    POSE_LANDMARKS.LEFT_KNEE, POSE_LANDMARKS.RIGHT_KNEE,
-    POSE_LANDMARKS.LEFT_ANKLE, POSE_LANDMARKS.RIGHT_ANKLE,
-  ];
-  const isFrameConfident = makeConfidenceChecker(REQUIRED_LANDMARKS);
+  // 🎯 FIX: push-ups are almost always filmed side-on (the only angle that
+  // actually shows elbow depth and hip sag/pike), which means the far side
+  // of the body is partially hidden behind the torso for the WHOLE clip.
+  // Requiring both sides to be visible in every frame (the old behavior)
+  // meant nearly every frame got rejected regardless of video quality or
+  // angle. A frame is confident if EITHER side is fully, clearly tracked.
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
 
   const MIN_CONFIDENT_FRAMES = 30; // Need a reasonable stretch of clearly-tracked frames to find real reps
 
@@ -38,6 +37,23 @@ const scorePushup = (function () {
   const LOCKOUT_ANGLE = 160;       // Elbow should extend to about this or more at the top
   const BODY_ALIGN_DEVIATION_THRESHOLD = 15; // Degrees of hip sag/pike from straight before flagging
 
+  // Computes elbow angle from whichever side(s) getEffectiveJoints actually
+  // gave us real points for this frame — averages left+right when both are
+  // confidently visible (front-on video), otherwise uses the single visible
+  // side directly rather than pretending the hidden side's guess counts too.
+  function computeElbowAngle(joints) {
+    if (!joints) return null;
+    if (joints.leftElbow && joints.rightElbow) {
+      const left = angleBetween(joints.leftWrist, joints.leftElbow, joints.leftShoulder);
+      const right = angleBetween(joints.rightWrist, joints.rightElbow, joints.rightShoulder);
+      return averageValid([left, right]);
+    }
+    const elbow = joints.leftElbow || joints.rightElbow;
+    const wrist = joints.leftWrist || joints.rightWrist;
+    const shoulder = joints.leftShoulder || joints.rightShoulder;
+    return angleBetween(wrist, elbow, shoulder);
+  }
+
   // --- Rep detection --------------------------------------------------------
 
   // Walks the confident frames in order, tracking elbow angle and body
@@ -51,12 +67,10 @@ const scorePushup = (function () {
     let currentRepBodyAlignAngles = [];
 
     for (let i = 0; i < confidentFrames.length; i++) {
-      const joints = getPixelJoints(confidentFrames[i], videoWidth, videoHeight);
+      const joints = getEffectiveJoints(confidentFrames[i], videoWidth, videoHeight);
+      if (!joints) continue; // Neither side was confidently visible this frame
 
-      const leftElbowAngle = angleBetween(joints.leftWrist, joints.leftElbow, joints.leftShoulder);
-      const rightElbowAngle = angleBetween(joints.rightWrist, joints.rightElbow, joints.rightShoulder);
-      const elbowAngle = averageValid([leftElbowAngle, rightElbowAngle]);
-
+      const elbowAngle = computeElbowAngle(joints);
       const bodyAlignAngle = angleBetween(joints.shoulderMid, joints.hipMid, joints.ankleMid);
 
       if (elbowAngle === null) continue; // Skip frames where we couldn't compute an angle at all
@@ -76,10 +90,8 @@ const scorePushup = (function () {
           // rather than just using the exact crossing frame's angle.
           let lockoutAngle = elbowAngle;
           for (let lookahead = i + 1; lookahead < Math.min(i + 6, confidentFrames.length); lookahead++) {
-            const laJoints = getPixelJoints(confidentFrames[lookahead], videoWidth, videoHeight);
-            const laLeft = angleBetween(laJoints.leftWrist, laJoints.leftElbow, laJoints.leftShoulder);
-            const laRight = angleBetween(laJoints.rightWrist, laJoints.rightElbow, laJoints.rightShoulder);
-            const laAngle = averageValid([laLeft, laRight]);
+            const laJoints = getEffectiveJoints(confidentFrames[lookahead], videoWidth, videoHeight);
+            const laAngle = computeElbowAngle(laJoints);
             if (laAngle !== null) lockoutAngle = Math.max(lockoutAngle, laAngle);
           }
 
