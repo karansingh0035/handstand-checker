@@ -33,15 +33,17 @@ let analysisFinalized = false; // Guards against scoring more than once per vide
 let activeSkillConfig = null;  // Which skill's scoring function to run for THIS upload
 
 // 🗂️ SKILL REGISTRY — maps a typed skill name to its scoring function.
-// Right now only handstand is implemented; adding a new skill later
-// (Phase 8) is just adding another entry here, plus its own scoreXyz()
-// function in its own file — nothing else in this flow needs to change.
+// Adding a new skill is just adding another entry here, plus its own
+// scoreXyz() function in its own file — nothing else in this flow changes.
 const SKILL_ANALYZERS = {
   "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
+  "pushup": { scoreFn: scorePushup, label: "Push-up" },
 };
 
 function resolveSkill(rawInput) {
-  const key = rawInput.trim().toLowerCase();
+  // Normalize away spaces/hyphens so "push up", "push-up", and "pushup"
+  // all match the same registry entry.
+  const key = rawInput.trim().toLowerCase().replace(/[\s-]/g, "");
   return SKILL_ANALYZERS[key] || null;
 }
 
@@ -111,18 +113,18 @@ async function runFinalFormScoring() {
   formScoreValue.textContent = result.score;
   coachingAdvice.textContent = "Getting your coaching feedback...";
 
-  const adviceText = await fetchCoachingAdvice(result.score, result.faults);
+  const adviceText = await fetchCoachingAdvice(result.score, result.faults, activeSkillConfig.label);
   coachingAdvice.textContent = adviceText;
 }
 
 // 🤖 CALLS THE BACKEND PROXY (never the Gemini API directly — see
 // api/coaching-advice.js for why) TO TURN DETECTED FAULTS INTO COACHING TEXT
-async function fetchCoachingAdvice(score, faults) {
+async function fetchCoachingAdvice(score, faults, skillLabel) {
   try {
     const response = await fetch("/api/coaching-advice", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score, faults }),
+      body: JSON.stringify({ score, faults, skill: skillLabel }),
     });
 
     if (!response.ok) {
@@ -135,15 +137,16 @@ async function fetchCoachingAdvice(score, faults) {
     console.error("Failed to fetch coaching advice:", err);
     // 🛟 Fallback: the app still works and shows something useful even if
     // the AI advice call fails or the backend isn't deployed yet.
-    return generatePlaceholderAdvice(faults);
+    return generatePlaceholderAdvice(faults, skillLabel);
   }
 }
 
 // 🤸 TEMPORARY: turns raw faults into readable text until the Gemini advice
-// layer (Phase 4-5 of the roadmap) replaces this with real AI coaching copy.
-function generatePlaceholderAdvice(faults) {
+// layer replaces this with real AI coaching copy (used as a fallback if
+// that call fails for any reason).
+function generatePlaceholderAdvice(faults, skillLabel) {
   if (faults.length === 0) {
-    return "Solid form! Your handstand looks well aligned.";
+    return `Solid form! Your ${skillLabel.toLowerCase()} looks well aligned.`;
   }
   return faults.map((f) => f.detail).join(" ");
 }

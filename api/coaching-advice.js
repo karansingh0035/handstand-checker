@@ -61,11 +61,11 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const { score, faults } = req.body || {};
+  const { score, faults, skill } = req.body || {};
 
   // Basic shape validation — don't trust the request body blindly
-  if (typeof score !== "number" || !Array.isArray(faults)) {
-    res.status(400).json({ error: "Request must include a numeric 'score' and a 'faults' array." });
+  if (typeof score !== "number" || !Array.isArray(faults) || typeof skill !== "string" || !skill.trim()) {
+    res.status(400).json({ error: "Request must include a numeric 'score', a 'faults' array, and a 'skill' name." });
     return;
   }
 
@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const prompt = buildPrompt(score, cappedFaults);
+  const prompt = buildPrompt(score, cappedFaults, skill);
 
   try {
     const geminiResponse = await fetch(GEMINI_ENDPOINT, {
@@ -139,10 +139,10 @@ module.exports = async function handler(req, res) {
 // on faults we actually detected, in a short, fixed format. This is the
 // guardrail against the model inventing plausible-sounding issues that
 // weren't actually detected by the pose analysis.
-function buildPrompt(score, faults) {
+function buildPrompt(score, faults, skill) {
   if (faults.length === 0) {
     return (
-      "You are a calisthenics coach. A student just held a handstand and scored " +
+      `You are a calisthenics coach. A student just performed a ${skill} and scored ` +
       `${score}/100 with no detected form faults. Write 1-2 short, encouraging ` +
       "sentences praising their form. Do not invent any specific faults or " +
       "corrections — there are none to mention."
@@ -154,13 +154,13 @@ function buildPrompt(score, faults) {
     .join("\n");
 
   return (
-    "You are a calisthenics coach giving feedback on a student's handstand. " +
+    `You are a calisthenics coach giving feedback on a student's ${skill}. ` +
     `They scored ${score}/100. Here is the EXACT and COMPLETE list of form ` +
     "issues detected by pose analysis:\n\n" +
     `${faultList}\n\n` +
     "Write 2-3 short sentences of coaching advice. Rules:\n" +
     "- Only reference the faults listed above. Do not mention, imply, or invent " +
-    "any other issue, even if it seems plausible for a handstand.\n" +
+    `any other issue, even if it seems plausible for a ${skill}.\n` +
     "- For each fault, briefly explain the likely cause and one concrete fix.\n" +
     "- Keep the tone encouraging and plain-language, like a supportive coach — " +
     "no technical jargon, no headers, no bullet points, just flowing sentences."

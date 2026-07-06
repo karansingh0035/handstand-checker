@@ -2,105 +2,13 @@
 // Scope (v1): standard vertical handstand, legs together, both hands down,
 // decent even lighting. Straddle/split variations are intentionally out of
 // scope for now — see roadmap notes.
+//
+// Shared geometry/landmark helpers (angleBetween, midpoint, medianLandmark,
+// POSE_LANDMARKS, etc.) live in pose-utils.js, loaded before this file.
 
-// MediaPipe Pose landmark indices we care about for this skill
-const POSE_LANDMARKS = {
-  LEFT_SHOULDER: 11,
-  RIGHT_SHOULDER: 12,
-  LEFT_ELBOW: 13,
-  RIGHT_ELBOW: 14,
-  LEFT_WRIST: 15,
-  RIGHT_WRIST: 16,
-  LEFT_HIP: 23,
-  RIGHT_HIP: 24,
-  LEFT_KNEE: 25,
-  RIGHT_KNEE: 26,
-  LEFT_ANKLE: 27,
-  RIGHT_ANKLE: 28,
-};
-
-const MIN_VISIBILITY = 0.5;      // Below this, a landmark is too unreliable to trust
 const MIN_CONFIDENT_FRAMES = 20; // Need at least ~20 clearly-tracked frames somewhere in the clip (~0.6-1s of an actual hold)
 
-// --- Geometry helpers ---------------------------------------------------
-
-// Angle at point b, formed by rays b->a and b->c, in degrees.
-// 180° means a-b-c are in a straight line.
-function angleBetween(a, b, c) {
-  const v1 = { x: a.x - b.x, y: a.y - b.y };
-  const v2 = { x: c.x - b.x, y: c.y - b.y };
-  const mag1 = Math.hypot(v1.x, v1.y);
-  const mag2 = Math.hypot(v2.x, v2.y);
-  if (mag1 === 0 || mag2 === 0) return null;
-
-  let cos = (v1.x * v2.x + v1.y * v2.y) / (mag1 * mag2);
-  cos = Math.max(-1, Math.min(1, cos)); // guard against floating-point drift past [-1, 1]
-  return (Math.acos(cos) * 180) / Math.PI;
-}
-
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function averageValid(values) {
-  const valid = values.filter((v) => v !== null && !Number.isNaN(v));
-  if (valid.length === 0) return null;
-  return valid.reduce((sum, v) => sum + v, 0) / valid.length;
-}
-
-function round1(n) {
-  return n === null ? null : Math.round(n * 10) / 10;
-}
-
-// MediaPipe normalizes x as a fraction of video WIDTH and y as a fraction
-// of video HEIGHT, independently. For a square video that's harmless, but
-// for a portrait 9:16 phone video, a 0.1 x-distance and a 0.1 y-distance
-// represent very different real-world distances. angleBetween() assumes x
-// and y are on the same scale, so we convert to real pixel space first —
-// this is what actually keeps angle math correct regardless of the video's
-// aspect ratio (independent of any canvas display sizing).
-function toPixelSpace(point, videoWidth, videoHeight) {
-  if (!point) return null;
-  return { x: point.x * videoWidth, y: point.y * videoHeight };
-}
-
-function median(values) {
-  if (values.length === 0) return null;
-  const sorted = values.slice().sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-// Finds a single representative position for a landmark across the WHOLE
-// video, using the median of every confident frame rather than a mean.
-// This matters now that we're analyzing the entire clip in one pass instead
-// of a short rolling window: a full clip includes walk-up/entry and
-// dismount/exit motion that isn't part of the actual held position. A mean
-// would get dragged toward those transition frames; a median mostly ignores
-// them as long as the genuine hold makes up the majority of tracked frames.
-function medianLandmark(frames, index) {
-  const points = frames
-    .map((frame) => frame[index])
-    .filter((p) => p && p.visibility >= MIN_VISIBILITY);
-
-  if (points.length === 0) return null;
-
-  return {
-    x: median(points.map((p) => p.x)),
-    y: median(points.map((p) => p.y)),
-  };
-}
-
-// A frame only counts as "confident" if every joint we need is visible
-// enough to trust. This is the gate that stops a low-visibility frame
-// (e.g. hands lost against a similar-colored floor) from polluting the average.
-function isFrameConfident(landmarks) {
-  return Object.values(POSE_LANDMARKS).every(
-    (index) => landmarks[index] && landmarks[index].visibility >= MIN_VISIBILITY
-  );
-}
-
-// --- Main scoring function ----------------------------------------------
+const isFrameConfident = makeConfidenceChecker(Object.values(POSE_LANDMARKS));
 
 // history: array of frames collected across the ENTIRE video, each frame
 // being the raw `results.poseLandmarks` array MediaPipe gives you (33
