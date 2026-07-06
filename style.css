@@ -16,9 +16,8 @@ body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   display: flex;
   justify-content: center;
-  align-items: flex-start; /* Anchor to top — centering could make tall content (long advice text) load mid-scroll */
+  align-items: safe center; /* Centers when content fits; falls back to top-aligned if it would overflow */
   min-height: 100vh;
-  padding-top: 6vh;
 }
 
 .container {
