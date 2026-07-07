@@ -42,8 +42,14 @@ const SKILL_ANALYZERS = {
   "handstandpushup": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
   "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
   "elbowlever": { scoreFn: scoreElbowLever, label: "Elbow Lever" },
+  // 🆕 Added Skills Mapping Integrations
+  "planche": { scoreFn: scorePlanche, label: "Planche" },
+  "frontlever": { scoreFn: scoreFrontLever, label: "Front Lever" },
+  "pullup": { scoreFn: scorePullup, label: "Pull-up" },
+  "pullups": { scoreFn: scorePullup, label: "Pull-up" },
+  "muscleup": { scoreFn: scoreMuscleUp, label: "Muscle-up" },
+  "muscleups": { scoreFn: scoreMuscleUp, label: "Muscle-up" },
 };
-
 function resolveSkill(rawInput) {
   // Normalize away spaces/hyphens so "push up", "push-up", and "pushup"
   // all match the same registry entry.
