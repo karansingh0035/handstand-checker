@@ -52,6 +52,7 @@ const SKILL_ANALYZERS = {
   "backlever": { scoreFn: scoreBackLever, label: "Back Lever" },
   "vsit": { scoreFn: scoreVSit, label: "V-sit" },
   "pikepushup": { scoreFn: scorePikePushup, label: "Pike Push-up" },
+  "90degreehold": { scoreFn: score90DegreeHold, label: "90-Degree Hold" },
   "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
 };
 function resolveSkill(rawInput) {
