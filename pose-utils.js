@@ -57,9 +57,26 @@ function angleBetween(a, b, c) {
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
+// Straight-line distance between two pixel-space points. Needed by skills
+// that care about proximity between two joints rather than the angle at a
+// vertex — e.g. elbow lever's "is the elbow actually tucked against the
+// hip" check, which none of the angle-based checks so far needed.
+function distance(a, b) {
+  if (!a || !b) return null;
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
 function midpoint(a, b) {
   if (!a || !b) return null;
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+// Straight-line distance between two pixel-space points. Useful for
+// proximity checks (e.g. "are the knees actually resting near the elbows")
+// where an angle doesn't capture what needs measuring.
+function distanceBetween(a, b) {
+  if (!a || !b) return null;
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function averageValid(values) {

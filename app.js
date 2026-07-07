@@ -41,6 +41,7 @@ const SKILL_ANALYZERS = {
   "lsit": { scoreFn: scoreLsit, label: "L-sit" },
   "handstandpushup": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
   "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
+  "elbowlever": { scoreFn: scoreElbowLever, label: "Elbow Lever" },
 };
 
 function resolveSkill(rawInput) {
