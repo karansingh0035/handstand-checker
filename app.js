@@ -40,15 +40,19 @@ const SKILL_ANALYZERS = {
   "pushup": { scoreFn: scorePushup, label: "Push-up" },
   "lsit": { scoreFn: scoreLsit, label: "L-sit" },
   "handstandpushup": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
-  "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
+  "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-ups" },
   "elbowlever": { scoreFn: scoreElbowLever, label: "Elbow Lever" },
   // 🆕 Added Skills Mapping Integrations
   "planche": { scoreFn: scorePlanche, label: "Planche" },
   "frontlever": { scoreFn: scoreFrontLever, label: "Front Lever" },
   "pullup": { scoreFn: scorePullup, label: "Pull-up" },
-  "pullups": { scoreFn: scorePullup, label: "Pull-up" },
+  "pullups": { scoreFn: scorePullup, label: "Pull-ups" },
   "muscleup": { scoreFn: scoreMuscleUp, label: "Muscle-up" },
-  "muscleups": { scoreFn: scoreMuscleUp, label: "Muscle-up" },
+  "muscleups": { scoreFn: scoreMuscleUp, label: "Muscle-ups" },
+  "backlever": { scoreFn: scoreBackLever, label: "Back Lever" },
+  "vsit": { scoreFn: scoreVSit, label: "V-sit" },
+  "pikepushup": { scoreFn: scorePikePushup, label: "Pike Push-up" },
+  "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
 };
 function resolveSkill(rawInput) {
   // Normalize away spaces/hyphens so "push up", "push-up", and "pushup"
