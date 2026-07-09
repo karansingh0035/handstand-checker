@@ -53,6 +53,12 @@ const SKILL_ANALYZERS = {
   "vsit": { scoreFn: scoreVSit, label: "V-sit" },
   "pikepushup": { scoreFn: scorePikePushup, label: "Pike Push-up" },
   "90degreehold": { scoreFn: score90DegreeHold, label: "90-Degree Hold" },
+  "crowpose": { scoreFn: scoreCrowPose, label: "Crow Pose" },
+  "frogstand": { scoreFn: scoreFrogStand, label: "Frog Stand" },
+  "straddleplanche": { scoreFn: scoreStraddlePlanche, label: "Straddle Planche" },
+  "planchelean": { scoreFn: scorePlancheLean, label: "Planche Lean" },
+  "90degreehspu": { scoreFn: score90DegreeHSPU, label: "90-Degree HSPU" },
+  "pseudoplanchepushup": { scoreFn: scorePseudoPlanchePushup, label: "Pseudo Planche Push-up" },
   "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
 };
 function resolveSkill(rawInput) {
