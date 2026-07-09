@@ -46,6 +46,11 @@ function isSideVisible(landmarks, sideIndices) {
 // Angle at point b, formed by rays b->a and b->c, in degrees.
 // 180° means a-b-c are in a straight line.
 function angleBetween(a, b, c) {
+  // 🛠️ THE FIX: If any joint is missing or untracked in this frame, exit safely
+  if (!a || !b || !c || a.x === undefined || b.x === undefined || c.x === undefined) {
+    return null;
+  }
+
   const v1 = { x: a.x - b.x, y: a.y - b.y };
   const v2 = { x: c.x - b.x, y: c.y - b.y };
   const mag1 = Math.hypot(v1.x, v1.y);
