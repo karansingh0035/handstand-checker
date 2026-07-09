@@ -7,11 +7,17 @@ const scoreCrowPose = (function () {
 
   return function scoreCrowPose(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isFrameConfident);
-
+// Replace the old error return blocks at the top of your function with this:
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "low_confidence",
-        message: "Couldn't gather enough side-on profile frames. Keep your entire body in frame.",
+        status: "ok",
+        score: 0,
+        faults: [{
+          id: "tracking_failed",
+          severity: "major",
+          detail: "Couldn't gather enough clean profile frames. Keep your entire body in the camera's view during the hold."
+        }],
+        angles: { elbowAngle: 0, hipHeightDiff: 0 }
       };
     }
 

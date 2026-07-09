@@ -5,10 +5,17 @@ const scorePlancheLean = (function () {
   return function scorePlancheLean(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(f => isSideVisible(f, LEFT_SIDE_LANDMARKS) || isSideVisible(f, RIGHT_SIDE_LANDMARKS));
 
+  // Replace the old error return blocks at the top of your function with this:
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "low_confidence",
-        message: "Ensure your entire body from hands to toes is visible in the frame.",
+        status: "ok",
+        score: 0,
+        faults: [{
+          id: "tracking_failed",
+          severity: "major",
+          detail: "Skeletal data incomplete. Ensure your position from toes to head remains visible in the frame."
+        }],
+        angles: { elbowAngle: 0, bodyLineAngle: 0, armLeanAngle: 0 }
       };
     }
 

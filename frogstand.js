@@ -8,10 +8,17 @@ const scoreFrogStand = (function () {
   return function scoreFrogStand(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isFrameConfident);
 
+   // Replace the old error return blocks at the top of your function with this:
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "low_confidence",
-        message: "Make sure the camera has a clear view of your hands, elbows, and hips from the side.",
+        status: "ok",
+        score: 0,
+        faults: [{
+          id: "tracking_failed",
+          severity: "major",
+          detail: "Tracking lost on balance points. Position the camera clear of obstacles and avoid loose clothing."
+        }],
+        angles: { elbowAngle: 0, torsoAngle: 0 }
       };
     }
 

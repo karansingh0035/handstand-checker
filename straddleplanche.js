@@ -7,11 +7,17 @@ const scoreStraddlePlanche = (function () {
 
   return function scoreStraddlePlanche(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isFrameConfident);
-
+// Replace the old error return blocks at the top of your function with this:
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "low_confidence",
-        message: "Position your camera at a clean side profile to accurately measure your planche lean.",
+        status: "ok",
+        score: 0,
+        faults: [{
+          id: "tracking_failed",
+          severity: "major",
+          detail: "Biomechanical landmarks missing. Make sure your camera is perfectly side-on to evaluate your straddle line."
+        }],
+        angles: { elbowAngle: 0, tiltFromHorizontal: 0, leanPixels: 0 }
       };
     }
 
