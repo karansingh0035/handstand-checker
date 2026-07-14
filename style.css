@@ -308,3 +308,29 @@ body {
     gap: 10px;
   }
 }
+/* 🍿 NETFLIX BACKGROUND ONLY (Leaves your existing layout completely untouched) */
+body::before {
+  content: "";
+  position: fixed; /* Sticks to the screen when scrolling */
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1; /* Pushes it all the way to the back layer */
+  
+  /* The Netflix Gradient Stack + Image */
+  background: 
+    linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 50%, rgba(0, 0, 0, 0.95) 100%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.98) 100%),
+    url('bg.jpg.jpg');
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  
+  opacity: 0.40; /* Dropped slightly lower to keep your UI sharp and readable */
+  filter: brightness(0.7) contrast(1.1);
+  
+  /* 🛟 Safety Guard: Ensures clicks pass straight through this image to hit your upload buttons */
+  pointer-events: none; 
+}
