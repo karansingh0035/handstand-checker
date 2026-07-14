@@ -62,12 +62,54 @@ const SKILL_ANALYZERS = {
   "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
 };
 function resolveSkill(rawInput) {
-  // Normalize away spaces/hyphens so "push up", "push-up", and "pushup"
-  // all match the same registry entry.
-  const key = rawInput.trim().toLowerCase().replace(/[\s-]/g, "");
+  if (!rawInput) return null;
+
+  // 1️⃣ Strict Baseline Normalization: Remove spaces, hyphens, underscores, and punctuation
+  let key = rawInput.trim().toLowerCase()
+    .replace(/[\s-_]/g, "")       // Strips spaces, dashes, and underscores
+    .replace(/°/g, "degree")      // Converts "90°" to "90degree"
+    .replace(/deg$/g, "degree")   // Converts "90deg" to "90degree"
+    .replace(/pushups$/g, "pushup") // Standardizes trailing plural pushups
+    .replace(/pullups$/g, "pullup"); // Standardizes trailing plural pullups
+
+  // 2️⃣ Direct Lookup Check: If it matches perfectly right away, return it
+  if (SKILL_ANALYZERS[key]) {
+    return SKILL_ANALYZERS[key];
+  }
+
+  // 3️⃣ Common Developer & Calisthenics Shorthand Abbreviations Mapping
+  const aliasMap = {
+    "hspus": "hspu",
+    "handstandpushups": "handstandpushup",
+    "90deghspu": "90degreehspu",
+    "90deghspus": "90degreehspu",
+    "90degreehspus": "90degreehspu",
+    "pppu": "pseudoplanchepushup",
+    "pppus": "pseudoplanchepushup",
+    "pseudoplanchepushups": "pseudoplanchepushup",
+    "pseudopushup": "pseudoplanchepushup",
+    "pseudopushups": "pseudoplanchepushup",
+    "plancheleans": "planchelean",
+    "straddleplanches": "straddleplanche",
+    "frogstands": "frogstand",
+    "crowposes": "crowpose"
+  };
+
+  if (aliasMap[key]) {
+    key = aliasMap[key];
+  }
+
+  // 4️⃣ Smart Plural Fallback: If it still ends in 's', try stripped down version
+  // This catches things like "front levers" -> "frontlever" safely
+  if (!SKILL_ANALYZERS[key] && key.endsWith("s") && key.length > 3) {
+    const singularKey = key.slice(0, -1);
+    if (SKILL_ANALYZERS[singularKey]) {
+      return SKILL_ANALYZERS[singularKey];
+    }
+  }
+
   return SKILL_ANALYZERS[key] || null;
 }
-
 // 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE
 function initMediaPipe() {
   poseEngine = new Pose({
