@@ -308,7 +308,20 @@ body {
     gap: 10px;
   }
 }
-/* 🍿 NETFLIX BACKGROUND ONLY (Cranked up visibility) */
+/* 📹 Pinned Background Video Layer */
+#bg-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover; /* Prevents the video from squishing or stretching distortively */
+  z-index: -2;       /* Pushed back past even the dark gradients */
+  pointer-events: none;
+  opacity: 0.55;     /* Balanced blend between the video and the deep black background */
+}
+
+/* 🍿 The Dark Netflix Gradient Mask (Sits exactly between the video and your text) */
 body::before {
   content: "";
   position: fixed;
@@ -316,21 +329,16 @@ body::before {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: -1;
+  z-index: -1;      /* Sits perfectly on top of #bg-video, but behind your main website app */
   
-  /* Softened the gradients slightly (from 0.95 down to 0.85) to let more image shine through */
   background: 
-    linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.85) 100%),
-    linear-gradient(to right, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.9) 100%),
-    url('bg.jpg.jpg');
-
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  
-  /* 🎛️ Visibility Boost */
-  opacity: 0.65;          /* Bumped up from 0.40 so it's much more distinct */
-  filter: brightness(0.9) contrast(1.15); /* Raised brightness from 0.7 to 0.9 */
+    linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.9) 100%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.95) 100%);
   
   pointer-events: none; 
+}
+
+/* 🛟 Optional Polish: Ensure body baseline stays pure black behind the video */
+body {
+  background-color: #000000;
 }

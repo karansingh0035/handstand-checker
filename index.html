@@ -5,41 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CaliXAi-form check</title>
     <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-<!-- ✅ Match the version explicitly here as well -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
-<script src="pose-utils.js" defer></script>
-<script src="handstand.js" defer></script>
-<script src="pushup.js" defer></script>
-<script src="lsit.js" defer></script>
-<script src="handstandpushup.js" defer></script>
-<script src="elbowlever.js" defer></script>
-<script src="planche.js" defer></script>
-<script src="frontlever.js" defer></script>
-<script src="pullup.js" defer></script>
-<script src="muscleup.js" defer></script>
-<script src="backlever.js" defer></script>
-<script src="vsit.js" defer></script>
-<script src="pikepushup.js" defer></script>
-<script src="90degreehold.js" defer></script>
-<script src="crowpose.js" defer></script>
-<script src="frogstand.js" defer></script>
-<script src="straddleplanche.js" defer></script>
-<script src="planchelean.js" defer></script>
-<script src="ninetydegreehspu.js" defer></script>
-<script src="pseudoplanchepushup.js" defer></script>
-<script src="app.js" defer></script>
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/insights/script.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <!-- ✅ Match the version explicitly here as well -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="pose-utils.js" defer></script>
+    <script src="handstand.js" defer></script>
+    <script src="pushup.js" defer></script>
+    <script src="lsit.js" defer></script>
+    <script src="handstandpushup.js" defer></script>
+    <script src="elbowlever.js" defer></script>
+    <script src="planche.js" defer></script>
+    <script src="frontlever.js" defer></script>
+    <script src="pullup.js" defer></script>
+    <script src="muscleup.js" defer></script>
+    <script src="backlever.js" defer></script>
+    <script src="vsit.js" defer></script>
+    <script src="pikepushup.js" defer></script>
+    <script src="90degreehold.js" defer></script>
+    <script src="crowpose.js" defer></script>
+    <script src="frogstand.js" defer></script>
+    <script src="straddleplanche.js" defer></script>
+    <script src="planchelean.js" defer></script>
+    <script src="ninetydegreehspu.js" defer></script>
+    <script src="pseudoplanchepushup.js" defer></script>
+    <script src="app.js" defer></script>
+    <script>
+      window.va =
+        window.va ||
+        function () {
+          (window.vaq = window.vaq || []).push(arguments);
+        };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
+    <!-- 🍿 Cinematic Background Video Layer -->
+    <video id="bg-video" autoplay loop muted playsinline>
+      <!-- High-quality free calisthenics/workout video placeholder -->
+      <source
+        src="video.mp4"
+        type="video/mp4"
+      />
+      Your browser does not support the video tag.
+    </video>
     <div class="container">
       <div class="text">
         <span>Check your form</span>
@@ -62,8 +84,21 @@
 
           <!-- 🛠️ THE BOTTOM INTERACTION ROW -->
           <div class="input-row">
-            <button type="button" class="icon-btn" id="plus" aria-label="Add video">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <button
+              type="button"
+              class="icon-btn"
+              id="plus"
+              aria-label="Add video"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+              >
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -81,8 +116,22 @@
               accept="video/*"
               style="display: none"
             />
-            <button type="button" class="icon-btn" id="upload" aria-label="Upload and scan">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <button
+              type="button"
+              class="icon-btn"
+              id="upload"
+              aria-label="Upload and scan"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <line x1="12" y1="19" x2="12" y2="5" />
                 <polyline points="5 12 12 5 19 12" />
               </svg>
