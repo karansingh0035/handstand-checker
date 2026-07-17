@@ -1,3 +1,6 @@
+/* ==========================================================================
+   1️⃣ BASELINE VARIABLES & SYSTEM RESET
+   ========================================================================== */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -5,21 +8,55 @@
 }
 
 body {
-  background-color: #0a0a0a;
-  background-image:
-    radial-gradient(ellipse 900px 600px at 15% -10%, rgba(255, 90, 31, 0.28), transparent 60%),
-    radial-gradient(ellipse 800px 700px at 105% 15%, rgba(255, 140, 66, 0.16), transparent 55%),
-    radial-gradient(ellipse 1000px 800px at 50% 120%, rgba(255, 90, 31, 0.14), transparent 60%),
-    linear-gradient(180deg, #0a0a0a 0%, #0d0a08 100%);
-  background-attachment: fixed;
+  background-color: #000000; /* Authoritative pitch black baseline for video contrast */
   color: #ffffff;
   font-family: 'Plus Jakarta Sans', sans-serif;
   display: flex;
   justify-content: center;
   align-items: safe center; /* Centers when content fits; falls back to top-aligned if it would overflow */
   min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  overflow-x: hidden;
 }
 
+/* ==========================================================================
+   2️⃣ CINEMATIC VIDEO & GRADIENT WALLPAPER LAYERS
+   ========================================================================== */
+/* 📹 Pinned Background Video Layer */
+#bg-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover; /* Prevents the video from squishing or stretching distortively */
+  z-index: -2;       /* Pushed back past even the dark gradients */
+  pointer-events: none;
+  opacity: 0.55;     /* Balanced blend between the video and the deep black background */
+}
+
+/* 🍿 The Dark Netflix Gradient Mask (Sits exactly between the video and your text) */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;      /* Sits perfectly on top of #bg-video, but behind your main website app */
+  
+  background: 
+    linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.9) 100%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.95) 100%);
+  
+  pointer-events: none; 
+}
+
+/* ==========================================================================
+   3️⃣ MAIN WORKSPACE LAYOUT & CONTAINERS
+   ========================================================================== */
 .container {
   width: 100%;
   max-width: 900px;
@@ -35,6 +72,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); /* Helps header text pop off the moving video */
 }
 
 .upload-bar {
@@ -42,42 +80,47 @@ body {
   max-width: 500px;
 }
 
+/* 🍿 PREMIUM DARK GLASSMORPHIC UPLOAD CONTAINER */
 .box {
-  background-color: rgba(20, 18, 16, 0.75);
+  /* Translucent cool charcoal/black instead of old warm brown */
+  background-color: rgba(15, 15, 15, 0.75); 
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1.5px dashed rgba(255, 90, 31, 0.35);
+  
+  /* Upgraded: Thin, solid sleek outline with low-opacity brand orange */
+  border: 1px solid rgba(255, 90, 31, 0.25);
   border-radius: 20px;
   padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  
+  /* Rich shadow setup to separate the workspace container from the moving background video */
+  box-shadow: 
+    0 20px 50px rgba(0, 0, 0, 0.65), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .box:hover {
+  /* Glowing accent border when user interacts */
   border-color: rgba(255, 90, 31, 0.55);
+  box-shadow: 
+    0 20px 50px rgba(255, 90, 31, 0.12), 
+    0 20px 50px rgba(0, 0, 0, 0.65);
 }
 
 .input-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  /* 🎯 FIX: without this, the row's intrinsic min-width is the sum of its
-     children's natural sizes, and a flex item's default min-width is
-     "auto" (its content size), not 0. On narrow phone screens that meant
-     the row as a whole refused to shrink small enough, so it silently
-     overflowed the box's padding — the upload button visually spilled past
-     the dashed border edge instead of the input field shrinking to make
-     room for it. */
-  min-width: 0;
+  min-width: 0; /* Keeps layout from breaking on small mobile screens */
 }
 
-/* 🔘 Icon buttons: previously these were raw <img> tags pointing at
-   plus.svg / upload.svg, whose actual appearance we can't see or control.
-   They're now real <button> elements with hand-coded inline SVGs, so the
-   shape and color are guaranteed instead of guessed. */
+/* ==========================================================================
+   4️⃣ INPUT ELEMENTS & INTERACTIVE BUTTONS
+   ========================================================================== */
+/* 🔘 Icon buttons: Clean, cool neutral circular bases */
 .icon-btn {
   cursor: pointer;
   width: 44px;
@@ -87,7 +130,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background-color: #211d1a;
+  background-color: rgba(255, 255, 255, 0.07); /* Clear cool-toned neutral base */
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #ffffff;
   transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
@@ -101,7 +144,7 @@ body {
 
 .icon-btn:hover {
   transform: scale(1.06);
-  background-color: #ff5a1f;
+  background-color: #ff5a1f; /* Pops to brilliant brand orange */
   box-shadow: 0 0 18px rgba(255, 90, 31, 0.55);
 }
 
@@ -114,19 +157,11 @@ body {
   outline-offset: 2px;
 }
 
+/* ⌨️ Cool-toned transparent input field */
 .text2 {
   flex-grow: 1;
-  /* 🎯 FIX: this is the actual culprit for the mobile overflow. A text
-     input's default min-width is "auto", which resolves to its intrinsic
-     content width (roughly the browser's default ~20-character sizing),
-     NOT 0. Inside a flex row, that means this input refused to shrink
-     below that width no matter how little room was left — instead of the
-     input compressing on a narrow phone screen, the upload button next to
-     it got pushed outside the box's padding/border. Setting min-width: 0
-     lets flex-grow/shrink actually govern this element's width instead of
-     its own content size winning out. */
   min-width: 0;
-  background-color: #1c1a18;
+  background-color: rgba(0, 0, 0, 0.45); /* Elegant transparent dark gray */
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   padding: 12px 16px;
@@ -136,7 +171,7 @@ body {
 }
 
 .text2::placeholder {
-  color: #6b6560;
+  color: rgba(255, 255, 255, 0.4); /* High contrast gray placeholder */
 }
 
 .text2:focus {
@@ -145,6 +180,9 @@ body {
   box-shadow: 0 0 0 3px rgba(255, 90, 31, 0.15);
 }
 
+/* ==========================================================================
+   5️⃣ MEDIA PREVIEWS & WORKSPACE DISPLAY
+   ========================================================================== */
 .preview-container {
   display: flex;
   justify-content: center;
@@ -212,8 +250,9 @@ body {
   align-items: flex-start; /* Cards size to their own content, not stretched to match each other */
 }
 
+/* 🍿 GLASSMORPHIC DATA CARD */
 .data-card {
-  background-color: rgba(20, 18, 16, 0.75);
+  background-color: rgba(15, 15, 15, 0.75); /* Matches main box styling */
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -226,7 +265,7 @@ body {
 .card-label {
   font-size: 0.75rem;
   font-weight: 700;
-  color: #666666;
+  color: #888888; /* Lightened for better readability on darker background */
   letter-spacing: 1px;
   display: block;
   margin-bottom: 10px;
@@ -240,20 +279,18 @@ body {
 
 .score-total {
   font-size: 1.5rem;
-  color: #444444;
+  color: #555555;
 }
 
 .advice-card p {
-  color: #cccccc;
+  color: #dddddd; /* Slightly brighter for crisp readability */
   line-height: 1.6;
   font-size: 1rem;
 }
 
-/* 📱 MOBILE RESPONSIVENESS
-   Below this width, side-by-side cards get too cramped — the advice text
-   wraps into a narrow tall column while the score card (much shorter
-   content) either looks stretched-empty or awkwardly squeezed next to it.
-   Stacking them vertically is the standard, cleaner pattern here. */
+/* ==========================================================================
+   6️⃣ MOBILE RESPONSIVENESS
+   ========================================================================== */
 @media (max-width: 640px) {
   .container {
     padding: 16px;
@@ -286,7 +323,7 @@ body {
   }
 }
 
-/* 📱 Extra-small phones — a bit more breathing room saved without feeling cramped */
+/* 📱 Extra-small phones — space adjustments */
 @media (max-width: 380px) {
   .text {
     font-size: 1.6rem;
@@ -296,10 +333,6 @@ body {
     padding: 12px;
   }
 
-  /* 🎯 FIX: at this width, even a shrunk input plus two 40px circular
-     buttons plus gaps can get tight enough that padding alone isn't
-     enough breathing room — trimming the input's own horizontal padding
-     a bit here keeps the upload button from crowding the edge. */
   .text2 {
     padding: 12px 12px;
   }
@@ -307,38 +340,4 @@ body {
   .input-row {
     gap: 10px;
   }
-}
-/* 📹 Pinned Background Video Layer */
-#bg-video {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  object-fit: cover; /* Prevents the video from squishing or stretching distortively */
-  z-index: -2;       /* Pushed back past even the dark gradients */
-  pointer-events: none;
-  opacity: 0.55;     /* Balanced blend between the video and the deep black background */
-}
-
-/* 🍿 The Dark Netflix Gradient Mask (Sits exactly between the video and your text) */
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1;      /* Sits perfectly on top of #bg-video, but behind your main website app */
-  
-  background: 
-    linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.9) 100%),
-    linear-gradient(to right, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.95) 100%);
-  
-  pointer-events: none; 
-}
-
-/* 🛟 Optional Polish: Ensure body baseline stays pure black behind the video */
-body {
-  background-color: #000000;
 }
