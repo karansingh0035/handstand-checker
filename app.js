@@ -133,15 +133,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // 3️⃣ SKELETON RENDERING OVERLAY + LANDMARK BUFFERING
 function onPoseResults(results) {
-  // 🛡️ Guard Clause: Skip drawing if no video is loaded or ready (e.g. during WebGL background warmup)
-  if (!processingVideoElement || processingVideoElement.readyState < 2) return;
+  if (!results) return;
 
-  // Clear the previous frame landmarks to keep lines crisp
+  // 🛡️ Prefer MediaPipe's processed frame canvas; fallback to video element if ready
+  const imageSource = results.image || (processingVideoElement && processingVideoElement.readyState >= 2 ? processingVideoElement : null);
+
+  // Guard against drawing when no valid image source is available
+  if (!imageSource) return;
+
   ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
-  ctx.drawImage(processingVideoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
+
+  // Safely draw frame background
+  try {
+    ctx.drawImage(imageSource, 0, 0, analysisCanvas.width, analysisCanvas.height);
+  } catch (err) {
+    // Silently skip corrupted or unready frame ticks without breaking the engine
+    return;
+  }
 
   // If a body skeleton structure is detected, draw the overlay tracking map
-  if (results && results.poseLandmarks) {
+  if (results.poseLandmarks) {
     drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {
       color: '#FFFFFF',
       lineWidth: 3
@@ -221,14 +232,13 @@ function scheduleNextFrame() {
 }
 
 function startVideoProcessingLoop() {
-  // 🎯 FIX: Only finalize scoring when the video actually reaches the end
   if (processingVideoElement.ended) {
     runFinalFormScoring();
     return;
   }
 
-  // 🎯 FIX: If video is paused temporarily (e.g. buffering), wait without killing the engine
-  if (processingVideoElement.paused) {
+  // 🛡️ Skip processing tick if video is paused or buffering data
+  if (processingVideoElement.paused || processingVideoElement.readyState < 2) {
     scheduleNextFrame();
     return;
   }
@@ -240,14 +250,15 @@ function startVideoProcessingLoop() {
 
   isFrameInFlight = true;
   poseEngine.send({ image: processingVideoElement })
-    .catch(err => console.error("MediaPipe Engine Error:", err))
+    .catch(err => {
+      // Suppress temporary frame-drop errors during video playback
+    })
     .finally(() => {
       isFrameInFlight = false;
     });
 
   scheduleNextFrame();
 }
-
 // 🛠️ SELECTION & INTERACTION HANDLERS
 plusBtn.addEventListener("click", () => {
   hiddenVideoInput.click();
