@@ -110,25 +110,37 @@ function resolveSkill(rawInput) {
 
   return SKILL_ANALYZERS[key] || null;
 }
-// 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE
+// 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE (OPTIMIZED FOR SPEED)
 function initMediaPipe() {
+  if (poseEngine) return; // Guard against duplicate instances
+
   poseEngine = new Pose({
-    // ✅ Pinning the exact version and passing a structured relative fallback URL
-    // fixes the asset loader mapping array so it never reads 'undefined'.
     locateFile: (file) => {
       return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
     }
   });
 
   poseEngine.setOptions({
-    modelComplexity: 1,      
+    modelComplexity: 0,         // ⚡ 0 = Lite model (2x-3x faster inference & instant playback start)
     smoothLandmarks: true,   
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5 
   });
 
   poseEngine.onResults(onPoseResults); 
+
+  // ⚡ Warmup trick: Send a tiny 1x1 blank canvas to pre-compile WebGL shaders in the background!
+  const dummyCanvas = document.createElement("canvas");
+  dummyCanvas.width = 1;
+  dummyCanvas.height = 1;
+  poseEngine.send({ image: dummyCanvas }).catch(() => {});
 }
+
+// ⚡ PRE-LOAD IMMEDIATELY ON PAGE LOAD
+// Downloads model binaries while the user is typing/browsing files so there is ZERO wait on upload!
+document.addEventListener("DOMContentLoaded", () => {
+  initMediaPipe();
+});
 // 3️⃣ SKELETON RENDERING OVERLAY + LANDMARK BUFFERING
 function onPoseResults(results) {
   // Clear the previous frame landmarks to keep lines crisp and avoid ghosting trails
@@ -376,13 +388,8 @@ uploadBtn.addEventListener("click", () => {
   // easy later addition, but isn't needed for the analysis flow itself.)
   processingVideoElement.loop = false;
 
-  // Spin up MediaPipe and trigger playback safely
+ // Inside uploadBtn.addEventListener("click", () => { ... })
   processingVideoElement.onloadeddata = () => {
-    // 🖼️ Size the canvas to match the video's real aspect ratio instead of a
-    // hardcoded 16:9. This is purely a display fix (the scoring math is
-    // already aspect-corrected separately in handstand-scoring.js) — without
-    // this, a portrait phone video would render visually squished into a
-    // widescreen box, even though the underlying scores stay accurate.
     const nativeWidth = processingVideoElement.videoWidth;
     const nativeHeight = processingVideoElement.videoHeight;
     const MAX_CANVAS_WIDTH = 640;
@@ -391,17 +398,15 @@ uploadBtn.addEventListener("click", () => {
     analysisCanvas.height = Math.round(nativeHeight * scale);
     canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
 
+    // ⚡ Ensure engine is initialized if page load hasn't fired yet
     if (!poseEngine) {
       initMediaPipe();
     }
 
-    // ✅ Attach the driver ONE single time on playback initialization
     processingVideoElement.addEventListener("play", () => {
       startVideoProcessingLoop();
-    }, { once: true }); // Executed strictly once to prevent multi-loop collisions
+    }, { once: true });
 
-    // 🎯 Explicit, authoritative trigger for the one final scoring pass —
-    // fires exactly once when the video naturally reaches its end.
     processingVideoElement.addEventListener("ended", runFinalFormScoring, { once: true });
 
     processingVideoElement.play();
