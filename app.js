@@ -15,7 +15,7 @@ const canvasWrapper = document.querySelector(".canvas-wrapper");
 const formScoreValue = document.getElementById("form-score-value");
 const coachingAdvice = document.getElementById("coaching-advice");
 
-// 🎯 FIX: Declare ctx globally so all processing functions can use it safely
+// 🎯 Declare ctx globally so all processing functions can use it safely
 const ctx = analysisCanvas.getContext("2d");
 
 // Global state tracking variables
@@ -24,17 +24,11 @@ let poseEngine = null;
 let processingVideoElement = null;
 
 // 🤸 SCORING STATE
-// We buffer landmarks for the ENTIRE video and score it once at the end,
-// rather than re-scoring on a rolling window during playback — a form
-// rating that changes mid-video looks unfinished, so this gives one
-// final, stable result instead.
 let landmarkHistory = [];      // All frames' landmarks collected across the whole clip
 let analysisFinalized = false; // Guards against scoring more than once per video
 let activeSkillConfig = null;  // Which skill's scoring function to run for THIS upload
 
 // 🗂️ SKILL REGISTRY — maps a typed skill name to its scoring function.
-// Adding a new skill is just adding another entry here, plus its own
-// scoreXyz() function in its own file — nothing else in this flow changes.
 const SKILL_ANALYZERS = {
   "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
   "pushup": { scoreFn: scorePushup, label: "Push-up" },
@@ -42,7 +36,6 @@ const SKILL_ANALYZERS = {
   "handstandpushup": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
   "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-ups" },
   "elbowlever": { scoreFn: scoreElbowLever, label: "Elbow Lever" },
-  // 🆕 Added Skills Mapping Integrations
   "planche": { scoreFn: scorePlanche, label: "Planche" },
   "frontlever": { scoreFn: scoreFrontLever, label: "Front Lever" },
   "pullup": { scoreFn: scorePullup, label: "Pull-up" },
@@ -61,23 +54,21 @@ const SKILL_ANALYZERS = {
   "pseudoplanchepushup": { scoreFn: scorePseudoPlanchePushup, label: "Pseudo Planche Push-up" },
   "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
 };
+
 function resolveSkill(rawInput) {
   if (!rawInput) return null;
 
-  // 1️⃣ Strict Baseline Normalization: Remove spaces, hyphens, underscores, and punctuation
   let key = rawInput.trim().toLowerCase()
-    .replace(/[\s-_]/g, "")       // Strips spaces, dashes, and underscores
-    .replace(/°/g, "degree")      // Converts "90°" to "90degree"
-    .replace(/deg$/g, "degree")   // Converts "90deg" to "90degree"
-    .replace(/pushups$/g, "pushup") // Standardizes trailing plural pushups
-    .replace(/pullups$/g, "pullup"); // Standardizes trailing plural pullups
+    .replace(/[\s-_]/g, "")       
+    .replace(/°/g, "degree")      
+    .replace(/deg$/g, "degree")   
+    .replace(/pushups$/g, "pushup") 
+    .replace(/pullups$/g, "pullup"); 
 
-  // 2️⃣ Direct Lookup Check: If it matches perfectly right away, return it
   if (SKILL_ANALYZERS[key]) {
     return SKILL_ANALYZERS[key];
   }
 
-  // 3️⃣ Common Developer & Calisthenics Shorthand Abbreviations Mapping
   const aliasMap = {
     "hspus": "hspu",
     "handstandpushups": "handstandpushup",
@@ -99,8 +90,6 @@ function resolveSkill(rawInput) {
     key = aliasMap[key];
   }
 
-  // 4️⃣ Smart Plural Fallback: If it still ends in 's', try stripped down version
-  // This catches things like "front levers" -> "frontlever" safely
   if (!SKILL_ANALYZERS[key] && key.endsWith("s") && key.length > 3) {
     const singularKey = key.slice(0, -1);
     if (SKILL_ANALYZERS[singularKey]) {
@@ -110,9 +99,10 @@ function resolveSkill(rawInput) {
 
   return SKILL_ANALYZERS[key] || null;
 }
+
 // 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE (OPTIMIZED FOR SPEED)
 function initMediaPipe() {
-  if (poseEngine) return; // Guard against duplicate instances
+  if (poseEngine) return; 
 
   poseEngine = new Pose({
     locateFile: (file) => {
@@ -121,7 +111,7 @@ function initMediaPipe() {
   });
 
   poseEngine.setOptions({
-    modelComplexity: 0,         // ⚡ 0 = Lite model (2x-3x faster inference & instant playback start)
+    modelComplexity: 0,         // ⚡ Lite model for high FPS & low latency
     smoothLandmarks: true,   
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5 
@@ -129,21 +119,24 @@ function initMediaPipe() {
 
   poseEngine.onResults(onPoseResults); 
 
-  // ⚡ Warmup trick: Send a tiny 1x1 blank canvas to pre-compile WebGL shaders in the background!
+  // ⚡ Warmup trick: Send a 64x64 canvas to compile WebGL shaders safely
   const dummyCanvas = document.createElement("canvas");
-  dummyCanvas.width = 1;
-  dummyCanvas.height = 1;
+  dummyCanvas.width = 64;
+  dummyCanvas.height = 64;
   poseEngine.send({ image: dummyCanvas }).catch(() => {});
 }
 
-// ⚡ PRE-LOAD IMMEDIATELY ON PAGE LOAD
-// Downloads model binaries while the user is typing/browsing files so there is ZERO wait on upload!
+// Pre-load immediately on page load
 document.addEventListener("DOMContentLoaded", () => {
   initMediaPipe();
 });
+
 // 3️⃣ SKELETON RENDERING OVERLAY + LANDMARK BUFFERING
 function onPoseResults(results) {
-  // Clear the previous frame landmarks to keep lines crisp and avoid ghosting trails
+  // 🛡️ Guard Clause: Skip drawing if no video is loaded or ready (e.g. during WebGL background warmup)
+  if (!processingVideoElement || processingVideoElement.readyState < 2) return;
+
+  // Clear the previous frame landmarks to keep lines crisp
   ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
   ctx.drawImage(processingVideoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
 
@@ -160,16 +153,13 @@ function onPoseResults(results) {
       radius: 4
     });
 
-    // 🤸 Buffer this frame's landmarks — the whole clip gets scored in one
-    // pass once the video ends (see runFinalFormScoring), not per-frame.
     landmarkHistory.push(results.poseLandmarks);
   }
 }
 
-// 🤸 RUNS THE SKILL-SPECIFIC SCORING FUNCTION ONCE, AFTER THE WHOLE VIDEO
-// HAS BEEN BUFFERED, AND REVEALS THE FINAL RESULT
+// 🤸 RUNS THE SKILL-SPECIFIC SCORING FUNCTION ONCE VIDEO ENDS
 async function runFinalFormScoring() {
-  if (analysisFinalized) return; // Never score the same video twice
+  if (analysisFinalized) return; 
   analysisFinalized = true;
 
   const result = activeSkillConfig.scoreFn(
@@ -184,7 +174,6 @@ async function runFinalFormScoring() {
     return;
   }
 
-  // Show the score immediately — it's ready — while advice text loads separately
   formScoreValue.textContent = result.score;
   coachingAdvice.textContent = "Getting your coaching feedback...";
 
@@ -192,8 +181,7 @@ async function runFinalFormScoring() {
   coachingAdvice.textContent = adviceText;
 }
 
-// 🤖 CALLS THE BACKEND PROXY (never the Gemini API directly — see
-// api/coaching-advice.js for why) TO TURN DETECTED FAULTS INTO COACHING TEXT
+// 🤖 CALLS BACKEND API FOR GEMINI AI ADVICE
 async function fetchCoachingAdvice(score, faults, skillLabel) {
   try {
     const response = await fetch("/api/coaching-advice", {
@@ -210,15 +198,10 @@ async function fetchCoachingAdvice(score, faults, skillLabel) {
     return data.advice;
   } catch (err) {
     console.error("Failed to fetch coaching advice:", err);
-    // 🛟 Fallback: the app still works and shows something useful even if
-    // the AI advice call fails or the backend isn't deployed yet.
     return generatePlaceholderAdvice(faults, skillLabel);
   }
 }
 
-// 🤸 TEMPORARY: turns raw faults into readable text until the Gemini advice
-// layer replaces this with real AI coaching copy (used as a fallback if
-// that call fails for any reason).
 function generatePlaceholderAdvice(faults, skillLabel) {
   if (faults.length === 0) {
     return `Solid form! Your ${skillLabel.toLowerCase()} looks well aligned.`;
@@ -227,7 +210,7 @@ function generatePlaceholderAdvice(faults, skillLabel) {
 }
 
 // 4️⃣ THE VIDEO PROCESSING TICK ENGINE LOOP
-let isFrameInFlight = false; // 🔒 Guards against overlapping poseEngine.send() calls
+let isFrameInFlight = false;
 
 function scheduleNextFrame() {
   if (processingVideoElement.requestVideoFrameCallback) {
@@ -238,16 +221,18 @@ function scheduleNextFrame() {
 }
 
 function startVideoProcessingLoop() {
-  if (processingVideoElement.paused || processingVideoElement.ended) {
-    // The video has finished playing — this is the one moment we score.
+  // 🎯 FIX: Only finalize scoring when the video actually reaches the end
+  if (processingVideoElement.ended) {
     runFinalFormScoring();
     return;
   }
 
-  // 🎯 Skip this tick entirely if the previous send() (or the initial
-  // asset/WASM load it triggers) hasn't resolved yet. Firing send() again
-  // before that finishes causes MediaPipe to kick off a second concurrent
-  // asset load, which races the first and throws inside its internal loader.
+  // 🎯 FIX: If video is paused temporarily (e.g. buffering), wait without killing the engine
+  if (processingVideoElement.paused) {
+    scheduleNextFrame();
+    return;
+  }
+
   if (isFrameInFlight) {
     scheduleNextFrame();
     return;
@@ -260,28 +245,24 @@ function startVideoProcessingLoop() {
       isFrameInFlight = false;
     });
 
-  // 🔄 Single Paced Driver Loop
   scheduleNextFrame();
 }
-
 
 // 🛠️ SELECTION & INTERACTION HANDLERS
 plusBtn.addEventListener("click", () => {
   hiddenVideoInput.click();
 });
 
-// VALIDATION CONFIGURATION SETTINGS
 const MAX_FILE_SIZE_MB = 50; 
 const MAX_DURATION_SECONDS = 60; 
-const MIN_VIDEO_HEIGHT = 240;  // Below this, MediaPipe has too little detail to track reliably
-const MAX_VIDEO_DIMENSION = 3840; // Beyond 4K, extra pixels just slow processing with no accuracy gain
+const MIN_VIDEO_HEIGHT = 240;  
+const MAX_VIDEO_DIMENSION = 3840; 
 
 hiddenVideoInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
 
   if (!file) return;
 
-  // 1️⃣ IMMEDIATELY CHECK FILE SIZE
   const fileSizeMB = file.size / (1024 * 1024);
   if (fileSizeMB > MAX_FILE_SIZE_MB) {
     alert(`File is too big! Maximum size allowed is ${MAX_FILE_SIZE_MB}MB. Your video is ${fileSizeMB.toFixed(1)}MB.`);
@@ -289,10 +270,8 @@ hiddenVideoInput.addEventListener("change", (event) => {
     return;
   }
 
-  // 2️⃣ LOAD VIDEO METADATA TO CHECK DURATION & RESOLUTION
   const tempVideo = document.createElement('video');
   tempVideo.preload = 'metadata';
-  tempVideo.src = URL.createObjectURL(file);
 
   tempVideo.onloadedmetadata = () => {
     URL.revokeObjectURL(tempVideo.src);
@@ -306,22 +285,17 @@ hiddenVideoInput.addEventListener("change", (event) => {
       return;
     }
 
-    // 🎯 REJECT: resolution too low for reliable pose tracking
     if (height < MIN_VIDEO_HEIGHT) {
       alert(`Video resolution is too low for accurate form analysis. Minimum height allowed is ${MIN_VIDEO_HEIGHT}p. Your video is ${width}x${height}.`);
       hiddenVideoInput.value = "";
       return;
     }
 
-    // ⚠️ WARN ONLY: very high resolution won't improve accuracy, just processing time
     if (width > MAX_VIDEO_DIMENSION || height > MAX_VIDEO_DIMENSION) {
-      console.warn(`Video resolution (${width}x${height}) is higher than needed — MediaPipe downsizes internally, so this just adds processing overhead.`);
+      console.warn(`Video resolution (${width}x${height}) is high. MediaPipe will resize internal buffers.`);
     }
 
-    // 🎉 VALIDATION PASSED! Stage the file and show the thumbnail preview
     uploadedVideoFile = file;
-    console.log(`Validation Passed! Size: ${fileSizeMB.toFixed(1)}MB, Duration: ${duration.toFixed(1)}s, Resolution: ${width}x${height}`);
-
     const videoURL = URL.createObjectURL(file);
     previewVideo.src = videoURL;
     previewContainer.style.display = "flex";
@@ -331,16 +305,16 @@ hiddenVideoInput.addEventListener("change", (event) => {
     alert("Could not read the video file. Please check if it's corrupted or an unsupported format.");
     hiddenVideoInput.value = "";
   };
+
+  tempVideo.src = URL.createObjectURL(file);
 });
 
-// ❌ Clear out state when cross button is fired
 removeBtn.addEventListener("click", () => {
   uploadedVideoFile = null;
   hiddenVideoInput.value = ""; 
   previewVideo.src = "";
   previewContainer.style.display = "none";
 });
-
 
 // 5️⃣ TRIGGER DASHBOARD SWITCH AND PROCESSING ON UPLOAD CLICK
 uploadBtn.addEventListener("click", () => {
@@ -349,10 +323,6 @@ uploadBtn.addEventListener("click", () => {
     return;
   }
 
-  // 🎯 Only proceed if the typed skill name actually matches a skill we have
-  // a scoring function for. Previously this ran the handstand checker
-  // regardless of what (or whether anything) was typed here — now it won't
-  // silently misanalyze an unrelated skill as a handstand.
   const skillConfig = resolveSkill(skillInput.value);
   if (!skillConfig) {
     const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
@@ -365,30 +335,22 @@ uploadBtn.addEventListener("click", () => {
   }
   activeSkillConfig = skillConfig;
 
-  // 🔄 Reset scoring state in case this isn't the user's first upload —
-  // otherwise a previous video's buffered landmarks would bleed into this one.
   landmarkHistory = [];
   analysisFinalized = false;
   formScoreValue.textContent = "--";
   coachingAdvice.textContent = `Analyzing your ${activeSkillConfig.label.toLowerCase()}...`;
 
-  // Transition UI states instantly
   mainTitle.style.display = "none";
   uploadBar.style.display = "none";
   analysisWorkspace.style.display = "flex";
 
-  // Create an off-screen background video element to run frame extraction safely
+  // Create video element
   processingVideoElement = document.createElement("video");
-  processingVideoElement.src = URL.createObjectURL(uploadedVideoFile);
   processingVideoElement.muted = true;
   processingVideoElement.playsInline = true;
-  // 🎯 Looping is OFF during analysis on purpose: we need the video to
-  // actually reach an 'ended' state so we know when to run the one, final
-  // scoring pass. (Re-enabling loop for casual replay after scoring is an
-  // easy later addition, but isn't needed for the analysis flow itself.)
   processingVideoElement.loop = false;
 
- // Inside uploadBtn.addEventListener("click", () => { ... })
+  // 🎯 FIX: Attach event listeners BEFORE setting .src to prevent race conditions
   processingVideoElement.onloadeddata = () => {
     const nativeWidth = processingVideoElement.videoWidth;
     const nativeHeight = processingVideoElement.videoHeight;
@@ -398,7 +360,6 @@ uploadBtn.addEventListener("click", () => {
     analysisCanvas.height = Math.round(nativeHeight * scale);
     canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
 
-    // ⚡ Ensure engine is initialized if page load hasn't fired yet
     if (!poseEngine) {
       initMediaPipe();
     }
@@ -411,17 +372,6 @@ uploadBtn.addEventListener("click", () => {
 
     processingVideoElement.play();
   };
+
+  processingVideoElement.src = URL.createObjectURL(uploadedVideoFile);
 });
-
-
-// 🎨 RENDERING UTILITIES
-function setupCanvasWorkspace() {
-  analysisCanvas.width = 640;
-  analysisCanvas.height = 360;
-  ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
-}
-
-function updateAnalysisUI(score, adviceText) {
-  formScoreValue.textContent = score;
-  coachingAdvice.textContent = adviceText;
-}
