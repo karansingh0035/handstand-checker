@@ -91,7 +91,7 @@ export const MOVEMENT_RULES = {
       id: 'dropping_pullup',
       priority: PRIORITY.TEMPO,
       cue: "Lower under control.",
-      check: (metrics) => metrics.eccS < 1.0
+      check: (metrics) => metrics.conS < 1.0
     }
   ]
 };

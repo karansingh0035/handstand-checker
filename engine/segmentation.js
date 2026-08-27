@@ -15,7 +15,19 @@ export class RepSegmenter {
 
   processFrame(metrics, timestamp = performance.now()) {
     this.frameCount++;
-    const { primarySignal, meanVisibility, minElbowAngle, maxHipAngle, bodyLineDeviation, isSag, isPike } = metrics;
+    const { 
+      primarySignal, 
+      meanVisibility, 
+      minElbowAngle, 
+      maxHipAngle, 
+      bodyLineDeviation, 
+      isSag, 
+      isPike,
+      hipY = 0,
+      kneeY = 0,
+      noseY = 0,
+      wristY = 0
+    } = metrics;
 
     if (meanVisibility < 0.60) {
       return { event: 'LOW_VISIBILITY', rep: null };
@@ -38,7 +50,13 @@ export class RepSegmenter {
         maxHipAngle: maxHipAngle,
         maxBodyLineDeviation: bodyLineDeviation,
         hasSagged: isSag,
-        hasPiked: isPike
+        hasPiked: isPike,
+
+        // Spatial position tracking for Squat & Pull-up rules
+        bottomHipY: hipY,
+        bottomKneeY: kneeY,
+        topNoseY: noseY,
+        topWristY: wristY
       };
       this.state = 'DESCENDING';
     } 
@@ -51,6 +69,18 @@ export class RepSegmenter {
       this.currentRep.maxBodyLineDeviation = Math.max(this.currentRep.maxBodyLineDeviation, bodyLineDeviation);
       if (isSag) this.currentRep.hasSagged = true;
       if (isPike) this.currentRep.hasPiked = true;
+
+      // Track bottom-position Y-coords for Squat depth check
+      if (hipY > this.currentRep.bottomHipY) {
+        this.currentRep.bottomHipY = hipY;
+        this.currentRep.bottomKneeY = kneeY;
+      }
+
+      // Track top-position Y-coords for Pull-up chin height check
+      if (noseY < this.currentRep.topNoseY) {
+        this.currentRep.topNoseY = noseY;
+        this.currentRep.topWristY = wristY;
+      }
 
       if (this.state === 'DESCENDING') {
         if (primarySignal < this.currentRep.bottomVal) {
@@ -101,7 +131,13 @@ export class RepSegmenter {
             maxHipAngle: this.currentRep.maxHipAngle,
             bodyLineDeviation: this.currentRep.maxBodyLineDeviation,
             isSag: this.currentRep.hasSagged,
-            isPike: this.currentRep.hasPiked
+            isPike: this.currentRep.hasPiked,
+
+            // Spatial Y-coordinates for rule evaluation
+            hipY: this.currentRep.bottomHipY,
+            kneeY: this.currentRep.bottomKneeY,
+            noseY: this.currentRep.topNoseY,
+            wristY: this.currentRep.topWristY
           };
 
           const isValid = avgConf >= 0.60 &&
