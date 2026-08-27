@@ -6,20 +6,14 @@ import { CueArbitrator } from './arbitrator.js';
 import { ProgressionManager } from './progression.js';
 import { angle, torsoVertical, bodyLine } from './primitives.js';
 
-/**
- * Triggers browser Web Speech API for real-time audio coaching.
- */
 export function speakCue(text) {
   if (!('speechSynthesis' in window) || !text) return;
-  window.speechSynthesis.cancel(); // Stop previous utterance immediately
+  window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.1; // Slightly faster for workout timing
+  utterance.rate = 1.1;
   window.speechSynthesis.speak(utterance);
 }
 
-/**
- * Unified TrueForm Processing Engine
- */
 export class TrueFormEngine {
   constructor(movementKey = 'pushup') {
     this.movementKey = movementKey;
@@ -40,31 +34,22 @@ export class TrueFormEngine {
     this.arbitrator.reset();
   }
 
-  /**
-   * Main per-frame pipeline call.
-   */
   processFrame(rawLandmarks, timestamp = performance.now()) {
     if (!rawLandmarks || rawLandmarks.length === 0) {
       return { repCount: this.segmenter.completedReps.length, activeCue: null };
     }
 
-    // 1. One-Euro smoothing
     const landmarks = this.filter.filterLandmarks(rawLandmarks, timestamp);
-
-    // 2. Derive frame geometry metrics
     const metrics = this.extractMetrics(landmarks);
 
-    // 3. Peak/trough rep segmentation
-    const segResult = this.segmenter.processFrame(metrics.primarySignal, metrics.meanVisibility, timestamp);
+    // Pass metrics to segmenter for full-rep aggregation
+    const segResult = this.segmenter.processFrame(metrics, timestamp);
 
     let activeCue = null;
 
-    // 4. On completed rep: evaluate rule set & arbitrate audio cues
     if (segResult.event === 'REP_COMPLETE') {
       const completedRep = segResult.rep;
-      const repMetrics = { ...metrics, ...completedRep };
-      
-      const violations = evaluateRules(this.movementKey, repMetrics);
+      const violations = evaluateRules(this.movementKey, completedRep);
       activeCue = this.arbitrator.arbitrate(completedRep.repNumber, violations);
 
       if (activeCue) {
@@ -83,9 +68,6 @@ export class TrueFormEngine {
   }
 
   extractMetrics(lm) {
-    // Primary MediaPipe keypoints:
-    // 11/12: shoulders, 13/14: elbows, 15/16: wrists
-    // 23/24: hips, 25/26: knees, 27/28: ankles
     const leftElbow = lm[13] && lm[11] && lm[15] ? angle(lm[11], lm[13], lm[15]) : 180;
     const rightElbow = lm[14] && lm[12] && lm[16] ? angle(lm[12], lm[14], lm[16]) : 180;
     const meanElbow = (leftElbow + rightElbow) / 2;
@@ -103,7 +85,6 @@ export class TrueFormEngine {
 
     const meanVis = lm.reduce((acc, curr) => acc + (curr.visibility || 1.0), 0) / lm.length;
 
-    // Route primary signal per exercise type
     let primarySignal = meanElbow;
     if (this.movementKey === 'squat') primarySignal = meanKnee;
 

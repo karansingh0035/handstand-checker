@@ -1,8 +1,5 @@
 // engine/smoothing.js
 
-/**
- * Low-pass filter component for signal smoothing.
- */
 class LowPassFilter {
   constructor(alpha = 0.5) {
     this.s = null;
@@ -27,9 +24,6 @@ class LowPassFilter {
   }
 }
 
-/**
- * 1D One-Euro Filter: adapts cutoff frequency dynamically based on movement speed.
- */
 class OneEuroFilter1D {
   constructor(freq = 30, minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
     this.freq = freq;
@@ -56,11 +50,12 @@ class OneEuroFilter1D {
 
     const prevX = this.xFilter.s;
     const dx = prevX === null ? 0 : (val - prevX) * this.freq;
+    
+    // Set alpha BEFORE filtering dx to fix stale alpha frame
+    this.dxFilter.setAlpha(this.alpha(this.dCutoff));
     const edx = this.dxFilter.filter(dx);
     
-    this.dxFilter.setAlpha(this.alpha(this.dCutoff));
     const cutoff = this.minCutoff + this.beta * Math.abs(edx);
-    
     this.xFilter.setAlpha(this.alpha(cutoff));
     return this.xFilter.filter(val);
   }
@@ -72,9 +67,6 @@ class OneEuroFilter1D {
   }
 }
 
-/**
- * Pose Landmark Filter Manager: smooths X and Y coordinates for all 33 MediaPipe landmarks.
- */
 export class LandmarkFilterManager {
   constructor(minCutoff = 1.0, beta = 0.007) {
     this.minCutoff = minCutoff;
