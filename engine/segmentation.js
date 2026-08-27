@@ -23,6 +23,7 @@ export class RepSegmenter {
       bodyLineDeviation, 
       isSag, 
       isPike,
+      torsoVertical,
       hipY = 0,
       kneeY = 0,
       noseY = 0,
@@ -49,6 +50,7 @@ export class RepSegmenter {
         maxElbowAngle: minElbowAngle,
         maxHipAngle: maxHipAngle,
         maxBodyLineDeviation: bodyLineDeviation,
+        maxTorsoVertical: torsoVertical,
         hasSagged: isSag,
         hasPiked: isPike,
 
@@ -67,6 +69,7 @@ export class RepSegmenter {
       this.currentRep.maxElbowAngle = Math.max(this.currentRep.maxElbowAngle, minElbowAngle);
       this.currentRep.maxHipAngle = Math.max(this.currentRep.maxHipAngle, maxHipAngle);
       this.currentRep.maxBodyLineDeviation = Math.max(this.currentRep.maxBodyLineDeviation, bodyLineDeviation);
+      this.currentRep.maxTorsoVertical = Math.max(this.currentRep.maxTorsoVertical, torsoVertical);
       if (isSag) this.currentRep.hasSagged = true;
       if (isPike) this.currentRep.hasPiked = true;
 
@@ -130,6 +133,7 @@ export class RepSegmenter {
             maxElbowAngle: this.currentRep.maxElbowAngle,
             maxHipAngle: this.currentRep.maxHipAngle,
             bodyLineDeviation: this.currentRep.maxBodyLineDeviation,
+            torsoVertical: this.currentRep.maxTorsoVertical,
             isSag: this.currentRep.hasSagged,
             isPike: this.currentRep.hasPiked,
 
