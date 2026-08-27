@@ -14,6 +14,19 @@ const analysisCanvas = document.getElementById("analysis-canvas");
 const canvasWrapper = document.querySelector(".canvas-wrapper");
 const formScoreValue = document.getElementById("form-score-value");
 const coachingAdvice = document.getElementById("coaching-advice");
+// app.js (Top of file)
+import { TrueFormEngine } from './engine/index.js';
+
+// Initialize the engine with default exercise
+const engine = new TrueFormEngine('pushup');
+
+// Update engine movement whenever the user changes the dropdown selection
+const exerciseDropdown = document.getElementById('exercise-select'); // Adjust ID to match your HTML
+if (exerciseDropdown) {
+  exerciseDropdown.addEventListener('change', (e) => {
+    engine.setMovement(e.target.value);
+  });
+}
 
 // 🎯 Declare ctx globally so all processing functions can use it safely
 const ctx = analysisCanvas.getContext("2d");
@@ -131,7 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initMediaPipe();
 });
 
-// 3️⃣ SKELETON RENDERING OVERLAY + LANDMARK BUFFERING
+// 3️⃣ SKELETON RENDERING OVERLAY + ENGINE INTEGRATION
 function onPoseResults(results) {
   if (!results) return;
 
@@ -151,21 +164,64 @@ function onPoseResults(results) {
     return;
   }
 
-  // If a body skeleton structure is detected, draw the overlay tracking map
+  // If pose landmarks detected, process through TrueForm Engine
   if (results.poseLandmarks) {
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {
+    // 1. Filter, segment, and evaluate frame in engine
+    const frameResult = engine.processFrame(results.poseLandmarks);
+    const smoothedLandmarks = frameResult.landmarks;
+
+    // 2. Render smoothed skeleton overlay for jitter-free tracking
+    drawConnectors(ctx, smoothedLandmarks, POSE_CONNECTIONS, {
       color: '#FFFFFF',
       lineWidth: 3
     });
 
-    drawLandmarks(ctx, results.poseLandmarks, {
+    drawLandmarks(ctx, smoothedLandmarks, {
       color: '#FF5A1F',
       lineWidth: 1,
       radius: 4
     });
 
-    landmarkHistory.push(results.poseLandmarks);
+    // 3. Buffer smoothed landmarks for post-video LLM analysis
+    landmarkHistory.push(smoothedLandmarks);
+
+    // 4. Update real-time rep counter on screen
+    const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
+    if (repDisplay) {
+      repDisplay.innerText = frameResult.repCount;
+    }
+
+    // 5. Draw visual coaching cue pill on canvas when an audio cue fires
+    if (frameResult.activeCue) {
+      drawCueOverlay(ctx, frameResult.activeCue.cue);
+    }
   }
+}
+
+/**
+ * Draws active coaching cue banner on the canvas overlay
+ */
+function drawCueOverlay(canvasCtx, text) {
+  const padding = 16;
+  canvasCtx.font = 'bold 20px sans-serif';
+  const textWidth = canvasCtx.measureText(text).width;
+  
+  const x = (analysisCanvas.width - textWidth) / 2;
+  const y = 50;
+
+  // Render background badge
+  canvasCtx.fillStyle = 'rgba(255, 90, 31, 0.9)';
+  if (canvasCtx.roundRect) {
+    canvasCtx.beginPath();
+    canvasCtx.roundRect(x - padding, y - 28, textWidth + (padding * 2), 40, 8);
+    canvasCtx.fill();
+  } else {
+    canvasCtx.fillRect(x - padding, y - 28, textWidth + (padding * 2), 40);
+  }
+
+  // Render text
+  canvasCtx.fillStyle = '#FFFFFF';
+  canvasCtx.fillText(text, x, y);
 }
 
 // 🤸 RUNS THE SKILL-SPECIFIC SCORING FUNCTION ONCE VIDEO ENDS
@@ -360,13 +416,21 @@ uploadBtn.addEventListener("click", () => {
   processingVideoElement.muted = true;
   processingVideoElement.playsInline = true;
   processingVideoElement.loop = false;
-
-  // 🎯 FIX: Attach event listeners BEFORE setting .src to prevent race conditions
-  processingVideoElement.onloadeddata = () => {
+processingVideoElement.onloadeddata = () => {
     const nativeWidth = processingVideoElement.videoWidth;
     const nativeHeight = processingVideoElement.videoHeight;
+    
+    // ⚡ Cap BOTH width and height so portrait videos don't generate massive canvas heights
     const MAX_CANVAS_WIDTH = 640;
-    const scale = Math.min(1, MAX_CANVAS_WIDTH / nativeWidth);
+    const MAX_CANVAS_HEIGHT = 640; 
+
+    // Find scale factor that satisfies both max limits
+    const scale = Math.min(
+      1, 
+      MAX_CANVAS_WIDTH / nativeWidth, 
+      MAX_CANVAS_HEIGHT / nativeHeight
+    );
+
     analysisCanvas.width = Math.round(nativeWidth * scale);
     analysisCanvas.height = Math.round(nativeHeight * scale);
     canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
