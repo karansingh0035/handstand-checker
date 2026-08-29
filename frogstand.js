@@ -74,3 +74,4 @@ const scoreFrogStand = (function () {
     };
   };
 })();
+window.scoreFrogStand = scoreFrogStand;

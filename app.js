@@ -1,3 +1,6 @@
+// app.js
+import { TrueFormEngine } from './engine/index.js';
+
 // 1️⃣ DOM INTERFACE ELEMENTS & TARGET HANDLES
 const plusBtn = document.getElementById("plus");
 const hiddenVideoInput = document.getElementById("hidden-video-input");
@@ -14,34 +17,35 @@ const analysisCanvas = document.getElementById("analysis-canvas");
 const canvasWrapper = document.querySelector(".canvas-wrapper");
 const formScoreValue = document.getElementById("form-score-value");
 const coachingAdvice = document.getElementById("coaching-advice");
-// app.js (Top of file)
-import { TrueFormEngine } from './engine/index.js';
 
-// Initialize the engine with default exercise
-const engine = new TrueFormEngine('pushup');
-
-// Update engine movement whenever the user changes the dropdown selection
-const exerciseDropdown = document.getElementById('exercise-select'); // Adjust ID to match your HTML
-if (exerciseDropdown) {
-  exerciseDropdown.addEventListener('change', (e) => {
-    engine.setMovement(e.target.value);
-  });
-}
-
-// 🎯 Declare ctx globally so all processing functions can use it safely
+// ⚡ Global Engine Instance & Analysis State
+const engine = new TrueFormEngine();
 const ctx = analysisCanvas.getContext("2d");
 
-// Global state tracking variables
 let uploadedVideoFile = null;
 let poseEngine = null;
 let processingVideoElement = null;
 
-// 🤸 SCORING STATE
-let landmarkHistory = [];      // All frames' landmarks collected across the whole clip
-let analysisFinalized = false; // Guards against scoring more than once per video
-let activeSkillConfig = null;  // Which skill's scoring function to run for THIS upload
+let landmarkHistory = [];      
+let analysisFinalized = false; 
+let activeSkillConfig = null;  
+let isLiveEngineEnabled = false; 
 
-// 🗂️ SKILL REGISTRY — maps a typed skill name to its scoring function.
+// Maps resolved skill keys to corresponding TrueFormEngine movement keys.
+// Dynamic rep-based exercises trigger live cues; static holds/levers bypass live processing.
+const LIVE_ENGINE_SKILL_MAP = {
+  "pushup": "pushup",
+  "squat": "squat",
+  "pullup": "pullup",
+  "pullups": "pullup",
+  "handstandpushup": "handstandpushup",
+  "hspu": "handstandpushup",
+  "90degreehspu": "ninetydegreehspu",
+  "planchepushup": "planchepushup",
+  "pseudoplanchepushup": "planchepushup"
+};
+
+// 🗂️ SKILL REGISTRY — maps typed skill names to scoring functions.
 const SKILL_ANALYZERS = {
   "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
   "pushup": { scoreFn: scorePushup, label: "Push-up" },
@@ -78,10 +82,6 @@ function resolveSkill(rawInput) {
     .replace(/pushups$/g, "pushup") 
     .replace(/pullups$/g, "pullup"); 
 
-  if (SKILL_ANALYZERS[key]) {
-    return SKILL_ANALYZERS[key];
-  }
-
   const aliasMap = {
     "hspus": "hspu",
     "handstandpushups": "handstandpushup",
@@ -106,25 +106,24 @@ function resolveSkill(rawInput) {
   if (!SKILL_ANALYZERS[key] && key.endsWith("s") && key.length > 3) {
     const singularKey = key.slice(0, -1);
     if (SKILL_ANALYZERS[singularKey]) {
-      return SKILL_ANALYZERS[singularKey];
+      key = singularKey;
     }
   }
 
-  return SKILL_ANALYZERS[key] || null;
+  const match = SKILL_ANALYZERS[key];
+  return match ? { ...match, key } : null;
 }
 
-// 2️⃣ INITIALIZE THE MEDIAPIPE POSE INSTANCE (OPTIMIZED FOR SPEED)
+// 2️⃣ INITIALIZE MEDIAPIPE POSE
 function initMediaPipe() {
   if (poseEngine) return; 
 
   poseEngine = new Pose({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
-    }
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
   });
 
   poseEngine.setOptions({
-    modelComplexity: 0,         // ⚡ Lite model for high FPS & low latency
+    modelComplexity: 0,
     smoothLandmarks: true,   
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5 
@@ -132,75 +131,74 @@ function initMediaPipe() {
 
   poseEngine.onResults(onPoseResults); 
 
-  // ⚡ Warmup trick: Send a 64x64 canvas to compile WebGL shaders safely
   const dummyCanvas = document.createElement("canvas");
   dummyCanvas.width = 64;
   dummyCanvas.height = 64;
   poseEngine.send({ image: dummyCanvas }).catch(() => {});
 }
 
-// Pre-load immediately on page load
 document.addEventListener("DOMContentLoaded", () => {
   initMediaPipe();
 });
 
-// 3️⃣ SKELETON RENDERING OVERLAY + ENGINE INTEGRATION
+// 3️⃣ SKELETON RENDERING OVERLAY + SINGLE-DRIVEN ENGINE INTEGRATION
 function onPoseResults(results) {
   if (!results) return;
 
-  // 🛡️ Prefer MediaPipe's processed frame canvas; fallback to video element if ready
   const imageSource = results.image || (processingVideoElement && processingVideoElement.readyState >= 2 ? processingVideoElement : null);
-
-  // Guard against drawing when no valid image source is available
   if (!imageSource) return;
 
   ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
 
-  // Safely draw frame background
   try {
     ctx.drawImage(imageSource, 0, 0, analysisCanvas.width, analysisCanvas.height);
   } catch (err) {
-    // Silently skip corrupted or unready frame ticks without breaking the engine
     return;
   }
 
-  // If pose landmarks detected, process through TrueForm Engine
   if (results.poseLandmarks) {
-    // 1. Filter, segment, and evaluate frame in engine
-    const frameResult = engine.processFrame(results.poseLandmarks);
-    const smoothedLandmarks = frameResult.landmarks;
+    // Always store raw landmarks for post-hoc scoring function
+    landmarkHistory.push(results.poseLandmarks);
 
-    // 2. Render smoothed skeleton overlay for jitter-free tracking
-    drawConnectors(ctx, smoothedLandmarks, POSE_CONNECTIONS, {
+    let displayLandmarks = results.poseLandmarks;
+
+    if (isLiveEngineEnabled) {
+      // 1. Process frame with live engine
+      const frameResult = engine.processFrame(results.poseLandmarks);
+      displayLandmarks = frameResult.landmarks;
+
+      // 2. Update live rep counter
+      const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
+      if (repDisplay) {
+        repDisplay.innerText = frameResult.repCount;
+      }
+
+      // 3. Draw visual coaching cue pill on canvas
+      if (frameResult.activeCue) {
+        drawCueOverlay(ctx, frameResult.activeCue.cue);
+      }
+    } else {
+      // Bypassed for static holds/levers — clear or hide rep counters
+      const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
+      if (repDisplay) {
+        repDisplay.innerText = "--";
+      }
+    }
+
+    // Render skeleton overlay
+    drawConnectors(ctx, displayLandmarks, POSE_CONNECTIONS, {
       color: '#FFFFFF',
       lineWidth: 3
     });
 
-    drawLandmarks(ctx, smoothedLandmarks, {
+    drawLandmarks(ctx, displayLandmarks, {
       color: '#FF5A1F',
       lineWidth: 1,
       radius: 4
     });
-
-    // 3. Buffer smoothed landmarks for post-video LLM analysis
-    landmarkHistory.push(smoothedLandmarks);
-
-    // 4. Update real-time rep counter on screen
-    const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
-    if (repDisplay) {
-      repDisplay.innerText = frameResult.repCount;
-    }
-
-    // 5. Draw visual coaching cue pill on canvas when an audio cue fires
-    if (frameResult.activeCue) {
-      drawCueOverlay(ctx, frameResult.activeCue.cue);
-    }
   }
 }
 
-/**
- * Draws active coaching cue banner on the canvas overlay
- */
 function drawCueOverlay(canvasCtx, text) {
   const padding = 16;
   canvasCtx.font = 'bold 20px sans-serif';
@@ -209,7 +207,6 @@ function drawCueOverlay(canvasCtx, text) {
   const x = (analysisCanvas.width - textWidth) / 2;
   const y = 50;
 
-  // Render background badge
   canvasCtx.fillStyle = 'rgba(255, 90, 31, 0.9)';
   if (canvasCtx.roundRect) {
     canvasCtx.beginPath();
@@ -219,12 +216,11 @@ function drawCueOverlay(canvasCtx, text) {
     canvasCtx.fillRect(x - padding, y - 28, textWidth + (padding * 2), 40);
   }
 
-  // Render text
   canvasCtx.fillStyle = '#FFFFFF';
   canvasCtx.fillText(text, x, y);
 }
 
-// 🤸 RUNS THE SKILL-SPECIFIC SCORING FUNCTION ONCE VIDEO ENDS
+// 🤸 POST-VIDEO SCORING
 async function runFinalFormScoring() {
   if (analysisFinalized) return; 
   analysisFinalized = true;
@@ -248,7 +244,6 @@ async function runFinalFormScoring() {
   coachingAdvice.textContent = adviceText;
 }
 
-// 🤖 CALLS BACKEND API FOR GEMINI AI ADVICE
 async function fetchCoachingAdvice(score, faults, skillLabel) {
   try {
     const response = await fetch("/api/coaching-advice", {
@@ -276,7 +271,7 @@ function generatePlaceholderAdvice(faults, skillLabel) {
   return faults.map((f) => f.detail).join(" ");
 }
 
-// 4️⃣ THE VIDEO PROCESSING TICK ENGINE LOOP
+// 4️⃣ VIDEO PROCESSING TICK LOOP
 let isFrameInFlight = false;
 
 function scheduleNextFrame() {
@@ -293,7 +288,6 @@ function startVideoProcessingLoop() {
     return;
   }
 
-  // 🛡️ Skip processing tick if video is paused or buffering data
   if (processingVideoElement.paused || processingVideoElement.readyState < 2) {
     scheduleNextFrame();
     return;
@@ -306,16 +300,15 @@ function startVideoProcessingLoop() {
 
   isFrameInFlight = true;
   poseEngine.send({ image: processingVideoElement })
-    .catch(err => {
-      // Suppress temporary frame-drop errors during video playback
-    })
+    .catch(() => {})
     .finally(() => {
       isFrameInFlight = false;
     });
 
   scheduleNextFrame();
 }
-// 🛠️ SELECTION & INTERACTION HANDLERS
+
+// 🛠️ SELECTION & UPLOAD HANDLERS
 plusBtn.addEventListener("click", () => {
   hiddenVideoInput.click();
 });
@@ -327,7 +320,6 @@ const MAX_VIDEO_DIMENSION = 3840;
 
 hiddenVideoInput.addEventListener("change", (event) => {
   const file = event.target.files[0];
-
   if (!file) return;
 
   const fileSizeMB = file.size / (1024 * 1024);
@@ -383,7 +375,7 @@ removeBtn.addEventListener("click", () => {
   previewContainer.style.display = "none";
 });
 
-// 5️⃣ TRIGGER DASHBOARD SWITCH AND PROCESSING ON UPLOAD CLICK
+// 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
 uploadBtn.addEventListener("click", () => {
   if (!uploadedVideoFile) {
     alert("Please click the '+' button to select a form video first!");
@@ -400,7 +392,17 @@ uploadBtn.addEventListener("click", () => {
     );
     return;
   }
+  
   activeSkillConfig = skillConfig;
+
+  // Resolve engine support key
+  const engineKey = LIVE_ENGINE_SKILL_MAP[activeSkillConfig.key];
+  if (engineKey) {
+    isLiveEngineEnabled = true;
+    engine.setMovement(engineKey);
+  } else {
+    isLiveEngineEnabled = false;
+  }
 
   landmarkHistory = [];
   analysisFinalized = false;
@@ -411,20 +413,18 @@ uploadBtn.addEventListener("click", () => {
   uploadBar.style.display = "none";
   analysisWorkspace.style.display = "flex";
 
-  // Create video element
   processingVideoElement = document.createElement("video");
   processingVideoElement.muted = true;
   processingVideoElement.playsInline = true;
   processingVideoElement.loop = false;
-processingVideoElement.onloadeddata = () => {
+
+  processingVideoElement.onloadeddata = () => {
     const nativeWidth = processingVideoElement.videoWidth;
     const nativeHeight = processingVideoElement.videoHeight;
     
-    // ⚡ Cap BOTH width and height so portrait videos don't generate massive canvas heights
     const MAX_CANVAS_WIDTH = 640;
     const MAX_CANVAS_HEIGHT = 640; 
 
-    // Find scale factor that satisfies both max limits
     const scale = Math.min(
       1, 
       MAX_CANVAS_WIDTH / nativeWidth, 

@@ -152,3 +152,4 @@ const scorePikePushup = (function () {
     };
   };
 })();
+window.scorePikePushup = scorePikePushup;

@@ -259,3 +259,4 @@ const scoreHandstandPushup = (function () {
     };
   };
 })();
+window.scoreHandstandPushup = scoreHandstandPushup;

@@ -209,3 +209,4 @@ const scorePushup = (function () {
     };
   };
 })();
+window.scorePushup = scorePushup;

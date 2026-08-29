@@ -88,3 +88,4 @@ const scoreBackLever = (function () {
     };
   };
 })();
+window.scoreBackLever = scoreBackLever;

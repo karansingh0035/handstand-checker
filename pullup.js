@@ -158,3 +158,4 @@ const scorePullup = (function () {
     };
   };
 })();
+window.scorePullup = scorePullup;

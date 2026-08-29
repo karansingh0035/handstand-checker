@@ -122,3 +122,4 @@ const scoreMuscleUp = (function () {
     };
   };
 })();
+window.scoreMuscleUp = scoreMuscleUp;

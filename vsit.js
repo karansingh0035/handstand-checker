@@ -73,3 +73,4 @@ const scoreVSit = (function () {
     };
   };
 })();
+window.scoreVSit = scoreVSit;

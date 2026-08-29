@@ -24,6 +24,7 @@ export class RepSegmenter {
       isSag, 
       isPike,
       torsoVertical,
+      shoulderLean,
       hipY = 0,
       kneeY = 0,
       noseY = 0,
@@ -51,8 +52,13 @@ export class RepSegmenter {
         maxHipAngle: maxHipAngle,
         maxBodyLineDeviation: bodyLineDeviation,
         maxTorsoVertical: torsoVertical,
+        maxShoulderLean: shoulderLean,
         hasSagged: isSag,
         hasPiked: isPike,
+
+        // Torso angle captured AT the deepest point of the rep (not max-anywhere)
+        // — needed for 90° HSPU, where the bottom position itself must be ~90°
+        bottomTorsoVertical: torsoVertical,
 
         // Spatial position tracking for Squat & Pull-up rules
         bottomHipY: hipY,
@@ -70,6 +76,7 @@ export class RepSegmenter {
       this.currentRep.maxHipAngle = Math.max(this.currentRep.maxHipAngle, maxHipAngle);
       this.currentRep.maxBodyLineDeviation = Math.max(this.currentRep.maxBodyLineDeviation, bodyLineDeviation);
       this.currentRep.maxTorsoVertical = Math.max(this.currentRep.maxTorsoVertical, torsoVertical);
+      this.currentRep.maxShoulderLean = Math.max(this.currentRep.maxShoulderLean, shoulderLean);
       if (isSag) this.currentRep.hasSagged = true;
       if (isPike) this.currentRep.hasPiked = true;
 
@@ -91,6 +98,7 @@ export class RepSegmenter {
           this.currentRep.bottomFrame = this.frameCount;
           this.currentRep.bottomTime = timestamp;
           this.currentRep.troughEnterTime = timestamp;
+          this.currentRep.bottomTorsoVertical = torsoVertical;
         }
 
         // Detect inflection point out of trough
@@ -134,6 +142,8 @@ export class RepSegmenter {
             maxHipAngle: this.currentRep.maxHipAngle,
             bodyLineDeviation: this.currentRep.maxBodyLineDeviation,
             torsoVertical: this.currentRep.maxTorsoVertical,
+            bottomTorsoVertical: this.currentRep.bottomTorsoVertical,
+            shoulderLean: this.currentRep.maxShoulderLean,
             isSag: this.currentRep.hasSagged,
             isPike: this.currentRep.hasPiked,
 

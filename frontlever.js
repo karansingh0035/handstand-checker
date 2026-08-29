@@ -88,3 +88,4 @@ const scoreFrontLever = (function () {
     };
   };
 })();
+window.scoreFrontLever = scoreFrontLever;

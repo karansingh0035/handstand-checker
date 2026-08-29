@@ -76,3 +76,4 @@ const scorePlancheLean = (function () {
     };
   };
 })();
+window.scorePlancheLean = scorePlancheLean;

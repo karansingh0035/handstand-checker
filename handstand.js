@@ -141,3 +141,4 @@ const scoreHandstand = (function () {
   }
 
 })();
+window.scoreHandstand = scoreHandstand;

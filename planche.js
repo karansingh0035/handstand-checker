@@ -90,3 +90,4 @@ const scorePlanche = (function () {
     };
   };
 })();
+window.scorePlanche = scorePlanche;

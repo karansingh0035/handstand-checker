@@ -210,3 +210,4 @@ const scoreElbowLever = (function () {
     };
   };
 })();
+window.scoreElbowLever = scoreElbowLever;

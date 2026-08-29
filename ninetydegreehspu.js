@@ -118,3 +118,4 @@ const score90DegreeHSPU = (function () {
     };
   };
 })();
+window.score90DegreeHSPU = score90DegreeHSPU;

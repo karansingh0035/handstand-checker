@@ -92,3 +92,4 @@ const score90DegreeHold = (function () {
     };
   };
 })();
+window.score90DegreeHold = score90DegreeHold;

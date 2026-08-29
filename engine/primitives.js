@@ -32,3 +32,28 @@ export function bodyLine(shoulder, hip, ankle) {
     isPike: normalizedCross < 0 && deviation > 8.0
   };
 }
+
+/**
+ * 🆕 Measures forward shoulder protraction past the wrist — the defining
+ * feature of planche work. Returns a scale-invariant ratio:
+ *   0    = shoulders directly above wrists
+ *   >0   = shoulders leaning forward past the wrists (toward planche)
+ *   <0   = shoulders leaning back behind the wrists
+ *
+ * Normalized by torso length (shoulder-to-hip distance) so the ratio stays
+ * comparable regardless of how close the camera is to the subject — a raw
+ * pixel distance would shrink/grow with filming distance and be useless
+ * as a fixed threshold.
+ *
+ * Orientation-agnostic via the same facingDirection sign trick bodyLine()
+ * uses: we don't know if the person faces left or right in frame, so we
+ * infer "forward" from which side the hip sits relative to the wrist
+ * (hips and shoulders move forward together in a real planche lean).
+ */
+export function shoulderLean(shoulder, wrist, hip) {
+  const facingDirection = Math.sign(hip.x - wrist.x) || 1;
+  const rawLean = (shoulder.x - wrist.x) * facingDirection;
+
+  const torsoLength = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y) || 1e-6;
+  return rawLean / torsoLength;
+}

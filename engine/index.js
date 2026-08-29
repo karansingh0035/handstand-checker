@@ -4,7 +4,7 @@ import { RepSegmenter } from './segmentation.js';
 import { evaluateRules } from './rules.js';
 import { CueArbitrator } from './arbitrator.js';
 import { ProgressionManager } from './progression.js';
-import { angle, torsoVertical, bodyLine } from './primitives.js';
+import { angle, torsoVertical, bodyLine, shoulderLean } from './primitives.js';
 
 export function speakCue(text) {
   if (!('speechSynthesis' in window) || !text) return;
@@ -79,9 +79,13 @@ export class TrueFormEngine {
     const shoulder = lm[11] || { x: 0, y: 0 };
     const hip = lm[23] || { x: 0, y: 0 };
     const ankle = lm[27] || { x: 0, y: 0 };
+    const wrist = lm[15] || { x: 0, y: 0 };
 
     const bodyLineData = bodyLine(shoulder, hip, ankle);
     const torsoVert = torsoVertical(shoulder, hip);
+
+    // 🆕 Forward shoulder protraction past the wrist, for planche pushup
+    const leanRatio = shoulderLean(shoulder, wrist, hip);
 
     const meanVis = lm.reduce((acc, curr) => acc + (curr.visibility || 1.0), 0) / lm.length;
 
@@ -98,6 +102,7 @@ export class TrueFormEngine {
       isSag: bodyLineData.isSag,
       isPike: bodyLineData.isPike,
       torsoVertical: torsoVert,
+      shoulderLean: leanRatio,
       hipY: hip.y,
       kneeY: lm[25] ? lm[25].y : 0,
       noseY: lm[0] ? lm[0].y : 0,

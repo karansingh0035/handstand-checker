@@ -81,3 +81,4 @@ const scoreCrowPose = (function () {
     };
   };
 })();
+window.scoreCrowPose = scoreCrowPose;

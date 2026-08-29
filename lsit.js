@@ -140,3 +140,4 @@ const scoreLsit = (function () {
     };
   };
 })();
+window.scoreLsit = scoreLsit;

@@ -102,3 +102,4 @@ const scorePseudoPlanchePushup = (function () {
     };
   };
 })();
+window.scorePseudoPlanchePushup = scorePseudoPlanchePushup;

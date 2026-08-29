@@ -87,3 +87,4 @@ const scoreStraddlePlanche = (function () {
     };
   };
 })();
+window.scoreStraddlePlanche = scoreStraddlePlanche;
