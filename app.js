@@ -42,7 +42,8 @@ const LIVE_ENGINE_SKILL_MAP = {
   "hspu": "handstandpushup",
   "90degreehspu": "ninetydegreehspu",
   "planchepushup": "planchepushup",
-  "pseudoplanchepushup": "planchepushup"
+  "pseudoplanchepushup": "planchepushup",
+  "squat": "squat",
 };
 
 // 🗂️ SKILL REGISTRY — maps typed skill names to scoring functions.
@@ -69,7 +70,10 @@ const SKILL_ANALYZERS = {
   "planchelean": { scoreFn: scorePlancheLean, label: "Planche Lean" },
   "90degreehspu": { scoreFn: score90DegreeHSPU, label: "90-Degree HSPU" },
   "pseudoplanchepushup": { scoreFn: scorePseudoPlanchePushup, label: "Pseudo Planche Push-up" },
-  "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" }
+  "pikepushups": { scoreFn: scorePikePushup, label: "Pike Push-ups" },
+  "planchepushup": { scoreFn: scorePlanchePushup, label: "Planche Push-up" },
+  "squat": { scoreFn: scoreSquat, label: "Squat" },
+  "squats": { scoreFn: scoreSquat, label: "Squats" },
 };
 
 function resolveSkill(rawInput) {
