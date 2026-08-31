@@ -4,7 +4,7 @@ import { RepSegmenter } from './segmentation.js';
 import { evaluateRules } from './rules.js';
 import { CueArbitrator } from './arbitrator.js';
 import { ProgressionManager } from './progression.js';
-import { angle, torsoVertical, bodyLine, shoulderLean } from './primitives.js';
+import { angle, torsoVertical, bodyLine, shoulderLean, verticalProgress } from './primitives.js';
 
 export function speakCue(text) {
   if (!('speechSynthesis' in window) || !text) return;
@@ -13,6 +13,20 @@ export function speakCue(text) {
   utterance.rate = 1.1;
   window.speechSynthesis.speak(utterance);
 }
+
+// 🆕 RepSegmenter's hysteresis/ROM thresholds are tuned for degree-based
+// angle signals (0-180° range) by default. muscleup's primarySignal is a
+// normalized ratio (roughly -1.5 to +1.5) — a completely different scale —
+// so it needs its own configuration or the segmenter would essentially
+// never trigger, and every rep would fail the ROM validity check. These
+// muscleup numbers are a rough estimate, NOT validated against real
+// footage — this needs real-clip testing more than any other threshold in
+// this engine so far, since there's no easy real-world reference point
+// (like "a degree") to sanity-check them against.
+const SIGNAL_HYSTERESIS = {
+  default: { troughExitDelta: 12.0, topReturnDelta: 8.0, bottomOvershootDelta: 35.0, expectedRom: 80.0 },
+  muscleup: { troughExitDelta: 0.25, topReturnDelta: 0.15, bottomOvershootDelta: 0.6, expectedRom: 1.0 }
+};
 
 export class TrueFormEngine {
   constructor(movementKey = 'pushup') {
@@ -25,6 +39,7 @@ export class TrueFormEngine {
 
   setMovement(movementKey) {
     this.movementKey = movementKey;
+    this.segmenter.configure(SIGNAL_HYSTERESIS[movementKey] || SIGNAL_HYSTERESIS.default);
     this.reset();
   }
 
@@ -87,10 +102,23 @@ export class TrueFormEngine {
     // 🆕 Forward shoulder protraction past the wrist, for planche pushup
     const leanRatio = shoulderLean(shoulder, wrist, hip);
 
+    // 🆕 Shoulder height relative to wrist, for muscle-up rep segmentation
+    const vertProgress = verticalProgress(shoulder, wrist, hip);
+
     const meanVis = lm.reduce((acc, curr) => acc + (curr.visibility || 1.0), 0) / lm.length;
 
     let primarySignal = meanElbow;
     if (this.movementKey === 'squat') primarySignal = meanKnee;
+    // Negated: RepSegmenter's shared state machine expects "high at rep
+    // start, low at the trough, high again to complete" (matches every
+    // angle-based movement: extended=high, bent=low). Muscle-up's real
+    // motion is the opposite shape — low (hang) to high (support) back to
+    // low (hang) — so we flip the sign to fit the existing state machine
+    // without changing its core logic. This means the segmenter's internal
+    // "bottomVal"/trough actually corresponds to the real-world TOP of the
+    // movement (support/lockout), not a literal low point — see the
+    // bottomElbowAngle comment in segmentation.js for where this matters.
+    if (this.movementKey === 'muscleup') primarySignal = -vertProgress;
 
     return {
       primarySignal,
@@ -103,6 +131,8 @@ export class TrueFormEngine {
       isPike: bodyLineData.isPike,
       torsoVertical: torsoVert,
       shoulderLean: leanRatio,
+      hipLineAngle: bodyLineData.angle,
+      verticalProgress: vertProgress,
       hipY: hip.y,
       kneeY: lm[25] ? lm[25].y : 0,
       noseY: lm[0] ? lm[0].y : 0,

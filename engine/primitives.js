@@ -27,6 +27,7 @@ export function bodyLine(shoulder, hip, ankle) {
   const normalizedCross = crossProduct * facingDirection;
 
   return {
+    angle: lineAngle,
     deviation,
     isSag: normalizedCross > 0 && deviation > 8.0,
     isPike: normalizedCross < 0 && deviation > 8.0
@@ -56,4 +57,25 @@ export function shoulderLean(shoulder, wrist, hip) {
 
   const torsoLength = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y) || 1e-6;
   return rawLean / torsoLength;
+}
+
+/**
+ * 🆕 Measures vertical progress of the shoulder relative to the wrist —
+ * used to segment muscle-up reps. Elbow angle alone isn't a reliable
+ * segmentation signal here: it can transiently straighten mid-transition
+ * during the pivot over the bar, which would falsely trigger rep
+ * completion right at the transition instead of at the actual dip lockout.
+ *
+ * Returns a scale-invariant ratio, normalized by torso length:
+ *   very negative = dead hang (shoulder well below the wrist/bar)
+ *   ~0            = shoulder near wrist height (mid-pull)
+ *   positive      = shoulder above the wrist (transition into support/dip)
+ *
+ * y increases downward in image space, so (wrist.y - shoulder.y) is
+ * negative while hanging (shoulder below the wrist) and positive once the
+ * shoulder rises above it into support.
+ */
+export function verticalProgress(shoulder, wrist, hip) {
+  const torsoLength = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y) || 1e-6;
+  return (wrist.y - shoulder.y) / torsoLength;
 }

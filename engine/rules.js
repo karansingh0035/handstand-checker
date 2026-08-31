@@ -164,6 +164,72 @@ export const MOVEMENT_RULES = {
     }
   ],
 
+  // 🆕 Pike Push-up: reuses the elbow-cycle rep shape, but the alignment
+  // check is inverted from every other push-family movement. Pushup/HSPU/
+  // planche pushup want a STRAIGHT body line and flag deviation in EITHER
+  // direction. Pike push-up starts deliberately hinged/piked — the fault
+  // here is the hips OPENING UP toward flat, a one-directional check using
+  // the raw hipLineAngle (not bodyLineDeviation, which can't tell direction).
+  // Thresholds match pikepushup.js's scoreFn exactly, so the live in-set
+  // cues and the post-video score agree on what "lost the pike" means.
+  pikepushup: [
+    {
+      id: 'pike_shallow_depth',
+      priority: PRIORITY.ROM,
+      cue: "Lower your head toward the floor.",
+      check: (metrics) => metrics.minElbowAngle > 95
+    },
+    {
+      id: 'pike_no_lockout',
+      priority: PRIORITY.ROM,
+      cue: "Push all the way back to lockout.",
+      check: (metrics) => metrics.maxElbowAngle < 155
+    },
+    {
+      id: 'pike_opening',
+      priority: PRIORITY.EFFICIENCY,
+      cue: "Keep your hips high — don't flatten out.",
+      check: (metrics) => metrics.hipLineAngle > 115
+    }
+  ],
+
+  // 🆕 Muscle-up: pull + transition + dip, treated as ONE combined rep.
+  // Segmented on verticalProgress (shoulder height relative to wrist), not
+  // elbow angle — see primitives.js's verticalProgress() and index.js's
+  // primarySignal override for why elbow angle alone isn't reliable here.
+  //
+  // no_full_hang mirrors pullup's identical check/threshold (maxElbowAngle
+  // as a proxy for "did full extension happen somewhere in the rep").
+  // no_dip_lockout is new — it uses bottomElbowAngle, captured at the exact
+  // frame of deepest support (segmentation.js's "bottom" trigger, which for
+  // this negated signal corresponds to the real-world TOP of the movement),
+  // not a rep-wide running max/min, since that moment specifically is what
+  // needs checking, not "extension anywhere in the rep."
+  //
+  // Deliberately excludes kip/leg-drive detection (distinguishing a strict
+  // vs. kipping muscle-up) — that needs leg/hip swing tracking, a separate,
+  // harder problem intentionally out of scope for v1.
+  muscleup: [
+    {
+      id: 'muscleup_no_full_hang',
+      priority: PRIORITY.ROM,
+      cue: "Start from a full hang — arms straight.",
+      check: (metrics) => metrics.maxElbowAngle < 160
+    },
+    {
+      id: 'muscleup_incomplete_transition',
+      priority: PRIORITY.ROM,
+      cue: "Pull higher — get your shoulders over the bar.",
+      check: (metrics) => metrics.verticalProgress < 0.3
+    },
+    {
+      id: 'muscleup_no_dip_lockout',
+      priority: PRIORITY.ROM,
+      cue: "Finish the dip — press all the way out.",
+      check: (metrics) => metrics.bottomElbowAngle < 160
+    }
+  ],
+
   squat: [
     {
       id: 'shallow_squat',

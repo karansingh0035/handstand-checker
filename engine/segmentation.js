@@ -7,10 +7,31 @@ export class RepSegmenter {
     this.maxRepDuration = options.maxRepS || 15.0;
     this.expectedRom = options.expectedRom || 80.0;
 
+    // 🆕 Configurable per-movement — defaults match the original hardcoded
+    // values, so every angle-based movement (pushup, squat, pullup, etc.)
+    // behaves identically to before. Only a movement whose primarySignal
+    // isn't degree-scale (e.g. muscleup's normalized ratio) needs these
+    // overridden via configure(), since the same 12.0/8.0/35.0 constants
+    // that work for a 0-180° signal would never trigger on a ~-1.5 to 1.5
+    // ratio signal.
+    this.troughExitDelta = options.troughExitDelta || 12.0;
+    this.topReturnDelta = options.topReturnDelta || 8.0;
+    this.bottomOvershootDelta = options.bottomOvershootDelta || 35.0;
+
     this.state = 'SEARCHING_START';
     this.completedReps = [];
     this.currentRep = null;
     this.frameCount = 0;
+  }
+
+  // 🆕 Updates scale-dependent thresholds without touching rep state —
+  // called from TrueFormEngine.setMovement() so each movement's segmenter
+  // matches its primarySignal's actual numeric scale.
+  configure(options = {}) {
+    if (options.troughExitDelta !== undefined) this.troughExitDelta = options.troughExitDelta;
+    if (options.topReturnDelta !== undefined) this.topReturnDelta = options.topReturnDelta;
+    if (options.bottomOvershootDelta !== undefined) this.bottomOvershootDelta = options.bottomOvershootDelta;
+    if (options.expectedRom !== undefined) this.expectedRom = options.expectedRom;
   }
 
   processFrame(metrics, timestamp = performance.now()) {
@@ -25,6 +46,8 @@ export class RepSegmenter {
       isPike,
       torsoVertical,
       shoulderLean,
+      hipLineAngle,
+      verticalProgress,
       hipY = 0,
       kneeY = 0,
       noseY = 0,
@@ -53,12 +76,19 @@ export class RepSegmenter {
         maxBodyLineDeviation: bodyLineDeviation,
         maxTorsoVertical: torsoVertical,
         maxShoulderLean: shoulderLean,
+        maxHipLineAngle: hipLineAngle,
+        maxVerticalProgress: verticalProgress,
         hasSagged: isSag,
         hasPiked: isPike,
 
-        // Torso angle captured AT the deepest point of the rep (not max-anywhere)
-        // — needed for 90° HSPU, where the bottom position itself must be ~90°
+        // Torso angle AND elbow angle captured AT the deepest point of the
+        // rep (not max-anywhere) — bottomTorsoVertical needed for 90° HSPU,
+        // bottomElbowAngle needed for muscle-up's dip-lockout check. For
+        // muscleup specifically, primarySignal's trough is the REAL-WORLD
+        // TOP of the movement (support/lockout) since that signal is
+        // negated — see index.js's primarySignal override for why.
         bottomTorsoVertical: torsoVertical,
+        bottomElbowAngle: minElbowAngle,
 
         // Spatial position tracking for Squat & Pull-up rules
         bottomHipY: hipY,
@@ -77,6 +107,8 @@ export class RepSegmenter {
       this.currentRep.maxBodyLineDeviation = Math.max(this.currentRep.maxBodyLineDeviation, bodyLineDeviation);
       this.currentRep.maxTorsoVertical = Math.max(this.currentRep.maxTorsoVertical, torsoVertical);
       this.currentRep.maxShoulderLean = Math.max(this.currentRep.maxShoulderLean, shoulderLean);
+      this.currentRep.maxHipLineAngle = Math.max(this.currentRep.maxHipLineAngle, hipLineAngle);
+      this.currentRep.maxVerticalProgress = Math.max(this.currentRep.maxVerticalProgress, verticalProgress);
       if (isSag) this.currentRep.hasSagged = true;
       if (isPike) this.currentRep.hasPiked = true;
 
@@ -99,16 +131,17 @@ export class RepSegmenter {
           this.currentRep.bottomTime = timestamp;
           this.currentRep.troughEnterTime = timestamp;
           this.currentRep.bottomTorsoVertical = torsoVertical;
+          this.currentRep.bottomElbowAngle = minElbowAngle;
         }
 
         // Detect inflection point out of trough
-        if (primarySignal > this.currentRep.bottomVal + 12.0) {
+        if (primarySignal > this.currentRep.bottomVal + this.troughExitDelta) {
           this.currentRep.troughExitTime = timestamp;
           this.state = 'ASCENDING';
         }
       } 
       else if (this.state === 'ASCENDING') {
-        if (primarySignal >= this.currentRep.topVal - 8.0 || primarySignal > this.currentRep.bottomVal + 35.0) {
+        if (primarySignal >= this.currentRep.topVal - this.topReturnDelta || primarySignal > this.currentRep.bottomVal + this.bottomOvershootDelta) {
           const endTime = timestamp;
           const durationS = (endTime - this.currentRep.startTime) / 1000.0;
           const eccS = (this.currentRep.bottomTime - this.currentRep.startTime) / 1000.0;
@@ -144,6 +177,9 @@ export class RepSegmenter {
             torsoVertical: this.currentRep.maxTorsoVertical,
             bottomTorsoVertical: this.currentRep.bottomTorsoVertical,
             shoulderLean: this.currentRep.maxShoulderLean,
+            hipLineAngle: this.currentRep.maxHipLineAngle,
+            verticalProgress: this.currentRep.maxVerticalProgress,
+            bottomElbowAngle: this.currentRep.bottomElbowAngle,
             isSag: this.currentRep.hasSagged,
             isPike: this.currentRep.hasPiked,
 
