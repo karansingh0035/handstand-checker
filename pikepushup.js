@@ -60,13 +60,20 @@ const scorePikePushup = (function () {
             if (laAngle !== null) maxLockout = Math.max(maxLockout, laAngle);
           }
 
-          // Find the average hip angle during this rep to check if they lost the pike position
-          const avgHipAngle = averageValid(currentRepHipAngles);
+          // Worst (most-opened, least-piked) hip angle seen during this rep —
+          // tracks the single moment the pike broke down, not an average,
+          // so a brief hip-pop under load at the bottom doesn't get diluted
+          // away by an otherwise-good rep. Matches the "flag the worst
+          // moment" convention used everywhere else in this file family
+          // (e.g. lockoutAngle's lookahead above, handstandpushup.js's
+          // worstBodyAlign).
+          const worstHipAngle =
+            currentRepHipAngles.length > 0 ? Math.max(...currentRepHipAngles) : null;
 
           reps.push({
             bottomAngle: currentRepMinElbowAngle,
             lockoutAngle: maxLockout,
-            avgHipAngle: avgHipAngle,
+            hipAngle: worstHipAngle,
           });
 
           phase = "top";
@@ -121,8 +128,8 @@ const scorePikePushup = (function () {
       });
     }
 
-    // 3️⃣ Lost Pike Shape: Hip angle opened up too wide (flattened out into a standard push-up shape)
-    const lostPikeReps = reps.filter((r) => r.avgHipAngle !== null && r.avgHipAngle > 115);
+    // 3️⃣ Lost Pike Shape: Hip angle opened up too wide at its worst moment (flattened out into a standard push-up shape)
+    const lostPikeReps = reps.filter((r) => r.hipAngle !== null && r.hipAngle > 115);
     if (lostPikeReps.length > 0) {
       const ratio = lostPikeReps.length / reps.length;
       faults.push({
@@ -147,7 +154,7 @@ const scorePikePushup = (function () {
       reps: reps.map((r) => ({
         bottomAngle: round1(r.bottomAngle),
         lockoutAngle: round1(r.lockoutAngle),
-        avgHipAngle: round1(r.avgHipAngle),
+        hipAngle: round1(r.hipAngle),
       })),
     };
   };
