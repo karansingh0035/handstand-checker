@@ -6,6 +6,8 @@ const plusBtn = document.getElementById("plus");
 const hiddenVideoInput = document.getElementById("hidden-video-input");
 const uploadBtn = document.getElementById("upload");
 const skillInput = document.getElementById("skill-input");
+const goLiveBtn = document.getElementById("go-live");
+const stopLiveBtn = document.getElementById("stop-live");
 
 const previewContainer = document.querySelector(".preview-container");
 const previewVideo = document.getElementById("preview-video");
@@ -31,6 +33,19 @@ let analysisFinalized = false;
 let activeSkillConfig = null;  
 let isLiveEngineEnabled = false; 
 
+// 🆕 Tracks whether ANY session (uploaded video OR live camera) is
+// currently supposed to be feeding frames. A live camera stream has no
+// natural "ended" event the way a video file does, so this flag is what
+// lets a manual Stop button halt the tick loop cleanly — the upload flow
+// still also relies on the video's real "ended" event as before, this
+// flag is just an additional safety switch shared by both paths.
+let isSessionActive = false;
+
+// 🆕 Holds the live camera's MediaStream so its tracks can be stopped
+// (releasing the camera) when a live session ends. Null during an
+// uploaded-video session.
+let liveStream = null;
+
 // Maps resolved skill keys to corresponding TrueFormEngine movement keys.
 // Dynamic rep-based exercises trigger live cues; static holds/levers bypass live processing.
 const LIVE_ENGINE_SKILL_MAP = {
@@ -44,28 +59,30 @@ const LIVE_ENGINE_SKILL_MAP = {
   "planchepushup": "planchepushup",
   "pseudoplanchepushup": "planchepushup",
   "squat": "squat",
+  "pikepushup": "pikepushup",
+  "muscleup": "muscleup",
 };
 
 // 🗂️ SKILL REGISTRY — maps typed skill names to scoring functions.
 const SKILL_ANALYZERS = {
-  "handstand": { scoreFn: scoreHandstand, label: "Handstand" },
-  "pushup": { scoreFn: scorePushup, label: "Push-up" },
+  "handstand": { validateFn: validateHandstandVideo, scoreFn: scoreHandstand, label: "Handstand" },
+  "pushup": { validateFn: validatePushupVideo, scoreFn: scorePushup, label: "Push-up" },
   "lsit": { scoreFn: scoreLsit, label: "L-sit" },
   "handstandpushup": { scoreFn: scoreHandstandPushup, label: "Handstand Push-up" },
   "hspu": { scoreFn: scoreHandstandPushup, label: "Handstand Push-ups" },
   "elbowlever": { scoreFn: scoreElbowLever, label: "Elbow Lever" },
   "planche": { scoreFn: scorePlanche, label: "Planche" },
-  "frontlever": { scoreFn: scoreFrontLever, label: "Front Lever" },
+  "frontlever": {validateFn: validateFrontLeverVideo, scoreFn: scoreFrontLever, label: "Front Lever" },
   "pullup": { scoreFn: scorePullup, label: "Pull-up" },
   "pullups": { scoreFn: scorePullup, label: "Pull-ups" },
-  "muscleup": { scoreFn: scoreMuscleUp, label: "Muscle-up" },
-  "muscleups": { scoreFn: scoreMuscleUp, label: "Muscle-ups" },
-  "backlever": { scoreFn: scoreBackLever, label: "Back Lever" },
+  "muscleup": { validateFn: validateMuscleUpVideo, scoreFn: scoreMuscleUp, label: "Muscle-up" },
+  "muscleups": { validateFn: validateMuscleUpVideo, scoreFn: scoreMuscleUp, label: "Muscle-ups" },
+  "backlever": { validateFn: validateBackLeverVideo, scoreFn: scoreBackLever, label: "Back Lever" },
   "vsit": { scoreFn: scoreVSit, label: "V-sit" },
   "pikepushup": { scoreFn: scorePikePushup, label: "Pike Push-up" },
-  "90degreehold": { scoreFn: score90DegreeHold, label: "90-Degree Hold" },
-  "crowpose": { scoreFn: scoreCrowPose, label: "Crow Pose" },
-  "frogstand": { scoreFn: scoreFrogStand, label: "Frog Stand" },
+  "90degreehold": { validateFn: validate90DegreeHoldVideo, scoreFn: score90DegreeHold, label: "90-Degree Hold" },
+  "crowpose": { validateFn: validateCrowPoseVideo, scoreFn: scoreCrowPose, label: "Crow Pose" },
+  "frogstand": { validateFn: validateFrogStandVideo, scoreFn: scoreFrogStand, label: "Frog Stand" },
   "straddleplanche": { scoreFn: scoreStraddlePlanche, label: "Straddle Planche" },
   "planchelean": { scoreFn: scorePlancheLean, label: "Planche Lean" },
   "90degreehspu": { scoreFn: score90DegreeHSPU, label: "90-Degree HSPU" },
@@ -146,6 +163,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // 3️⃣ SKELETON RENDERING OVERLAY + SINGLE-DRIVEN ENGINE INTEGRATION
+// Unchanged from the upload-only version — this function was already
+// source-agnostic (it reads from `results.image` or falls back to
+// whatever `processingVideoElement` currently is), so it works identically
+// whether frames come from an uploaded file or a live camera stream.
 function onPoseResults(results) {
   if (!results) return;
 
@@ -161,7 +182,9 @@ function onPoseResults(results) {
   }
 
   if (results.poseLandmarks) {
-    // Always store raw landmarks for post-hoc scoring function
+    // Always store raw landmarks for post-hoc scoring function — this is
+    // what lets a live session still produce a final score/report once
+    // stopped, reusing the exact same scoreFn system as an uploaded video.
     landmarkHistory.push(results.poseLandmarks);
 
     let displayLandmarks = results.poseLandmarks;
@@ -224,16 +247,41 @@ function drawCueOverlay(canvasCtx, text) {
   canvasCtx.fillText(text, x, y);
 }
 
-// 🤸 POST-VIDEO SCORING
+// 🤸 POST-VIDEO / POST-SESSION SCORING
+// Works identically for an uploaded file or a stopped live session, since
+// both populate landmarkHistory the same way and both set
+// processingVideoElement.videoWidth/videoHeight once their source's
+// metadata has loaded.
 async function runFinalFormScoring() {
   if (analysisFinalized) return; 
   analysisFinalized = true;
 
-  const result = activeSkillConfig.scoreFn(
-    landmarkHistory,
-    processingVideoElement.videoWidth,
-    processingVideoElement.videoHeight
-  );
+  const videoWidth = processingVideoElement.videoWidth;
+  const videoHeight = processingVideoElement.videoHeight;
+
+  // 🆕 Step 1: global, skill-agnostic quality gate — runs for every skill,
+  // regardless of whether that skill has its own validateFn built yet.
+  const quality = validateVideoQuality(landmarkHistory);
+  if (!quality.valid) {
+    formScoreValue.textContent = "--";
+    coachingAdvice.textContent = quality.message;
+    return;
+  }
+
+  // 🆕 Step 2: skill-specific plausibility check. Only handstand and pushup
+  // have a validateFn so far — this is intentionally incremental (per the
+  // agreed rollout plan), not all-or-nothing. Skills without one yet fall
+  // straight through to scoring, exactly as before.
+  if (activeSkillConfig.validateFn) {
+    const skillCheck = activeSkillConfig.validateFn(landmarkHistory, videoWidth, videoHeight);
+    if (!skillCheck.valid) {
+      formScoreValue.textContent = "--";
+      coachingAdvice.textContent = skillCheck.message;
+      return;
+    }
+  }
+
+  const result = activeSkillConfig.scoreFn(landmarkHistory, videoWidth, videoHeight);
 
   if (result.status !== "ok") {
     formScoreValue.textContent = "--";
@@ -275,7 +323,7 @@ function generatePlaceholderAdvice(faults, skillLabel) {
   return faults.map((f) => f.detail).join(" ");
 }
 
-// 4️⃣ VIDEO PROCESSING TICK LOOP
+// 4️⃣ FRAME PROCESSING TICK LOOP
 let isFrameInFlight = false;
 
 function scheduleNextFrame() {
@@ -287,7 +335,12 @@ function scheduleNextFrame() {
 }
 
 function startVideoProcessingLoop() {
+  // 🆕 Manual stop switch — a live camera stream never sets .ended, so
+  // this is what actually halts the loop when the user taps Stop.
+  if (!isSessionActive) return;
+
   if (processingVideoElement.ended) {
+    isSessionActive = false;
     runFinalFormScoring();
     return;
   }
@@ -310,6 +363,41 @@ function startVideoProcessingLoop() {
     });
 
   scheduleNextFrame();
+}
+
+// 🆕 SHARED "SOURCE IS READY" SETUP — extracted from the upload flow so
+// both the uploaded-file path and the live-camera path use identical
+// canvas sizing / MediaPipe init / loop-start logic instead of duplicating
+// it. Assumes processingVideoElement.videoWidth/videoHeight are already
+// valid (i.e. this only gets called from an onloadeddata handler).
+function beginFrameProcessing() {
+  const nativeWidth = processingVideoElement.videoWidth;
+  const nativeHeight = processingVideoElement.videoHeight;
+
+  const MAX_CANVAS_WIDTH = 640;
+  const MAX_CANVAS_HEIGHT = 640;
+
+  const scale = Math.min(
+    1,
+    MAX_CANVAS_WIDTH / nativeWidth,
+    MAX_CANVAS_HEIGHT / nativeHeight
+  );
+
+  analysisCanvas.width = Math.round(nativeWidth * scale);
+  analysisCanvas.height = Math.round(nativeHeight * scale);
+  canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
+
+  if (!poseEngine) {
+    initMediaPipe();
+  }
+
+  isSessionActive = true;
+
+  processingVideoElement.addEventListener("play", () => {
+    startVideoProcessingLoop();
+  }, { once: true });
+
+  processingVideoElement.play();
 }
 
 // 🛠️ SELECTION & UPLOAD HANDLERS
@@ -379,13 +467,11 @@ removeBtn.addEventListener("click", () => {
   previewContainer.style.display = "none";
 });
 
-// 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
-uploadBtn.addEventListener("click", () => {
-  if (!uploadedVideoFile) {
-    alert("Please click the '+' button to select a form video first!");
-    return;
-  }
-
+// Shared by both the upload flow and the live flow: resolves the typed
+// skill, wires up the engine (or not, for static holds), and resets
+// per-session state. Returns the resolved skillConfig, or null if
+// resolution failed (an alert has already been shown in that case).
+function prepareSession() {
   const skillConfig = resolveSkill(skillInput.value);
   if (!skillConfig) {
     const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
@@ -394,12 +480,11 @@ uploadBtn.addEventListener("click", () => {
         ? `"${skillInput.value.trim()}" isn't supported yet. Currently supported: ${supportedList}.`
         : `Please type the name of your skill first. Currently supported: ${supportedList}.`
     );
-    return;
+    return null;
   }
-  
+
   activeSkillConfig = skillConfig;
 
-  // Resolve engine support key
   const engineKey = LIVE_ENGINE_SKILL_MAP[activeSkillConfig.key];
   if (engineKey) {
     isLiveEngineEnabled = true;
@@ -411,7 +496,21 @@ uploadBtn.addEventListener("click", () => {
   landmarkHistory = [];
   analysisFinalized = false;
   formScoreValue.textContent = "--";
-  coachingAdvice.textContent = `Analyzing your ${activeSkillConfig.label.toLowerCase()}...`;
+
+  return skillConfig;
+}
+
+// 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
+uploadBtn.addEventListener("click", () => {
+  if (!uploadedVideoFile) {
+    alert("Please click the '+' button to select a form video first!");
+    return;
+  }
+
+  const skillConfig = prepareSession();
+  if (!skillConfig) return;
+
+  coachingAdvice.textContent = `Analyzing your ${skillConfig.label.toLowerCase()}...`;
 
   mainTitle.style.display = "none";
   uploadBar.style.display = "none";
@@ -423,34 +522,65 @@ uploadBtn.addEventListener("click", () => {
   processingVideoElement.loop = false;
 
   processingVideoElement.onloadeddata = () => {
-    const nativeWidth = processingVideoElement.videoWidth;
-    const nativeHeight = processingVideoElement.videoHeight;
-    
-    const MAX_CANVAS_WIDTH = 640;
-    const MAX_CANVAS_HEIGHT = 640; 
-
-    const scale = Math.min(
-      1, 
-      MAX_CANVAS_WIDTH / nativeWidth, 
-      MAX_CANVAS_HEIGHT / nativeHeight
-    );
-
-    analysisCanvas.width = Math.round(nativeWidth * scale);
-    analysisCanvas.height = Math.round(nativeHeight * scale);
-    canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
-
-    if (!poseEngine) {
-      initMediaPipe();
-    }
-
-    processingVideoElement.addEventListener("play", () => {
-      startVideoProcessingLoop();
-    }, { once: true });
-
+    beginFrameProcessing();
     processingVideoElement.addEventListener("ended", runFinalFormScoring, { once: true });
-
-    processingVideoElement.play();
   };
 
   processingVideoElement.src = URL.createObjectURL(uploadedVideoFile);
+});
+
+// 🆕 6️⃣ LIVE CAMERA MODE — real-time coaching, same skill input, same
+// underlying pipeline as the upload flow, but sourced from getUserMedia()
+// instead of a picked file, and ended manually via a Stop button instead
+// of a natural "ended" event.
+goLiveBtn.addEventListener("click", async () => {
+  const skillConfig = prepareSession();
+  if (!skillConfig) return;
+
+  coachingAdvice.textContent = `Coaching your ${skillConfig.label.toLowerCase()} live...`;
+
+  let stream;
+  try {
+    // Rear camera by default — makes sense for propping up a phone and
+    // stepping back into frame. Falls back gracefully if unavailable
+    // (e.g. on a laptop with only a front-facing webcam).
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+  } catch (err) {
+    console.error("Camera access failed:", err);
+    alert("Couldn't access your camera. Please allow camera permission and try again — note this also requires HTTPS (or localhost) to work at all.");
+    return;
+  }
+
+  liveStream = stream;
+
+  mainTitle.style.display = "none";
+  uploadBar.style.display = "none";
+  analysisWorkspace.style.display = "flex";
+  stopLiveBtn.style.display = "inline-flex";
+
+  processingVideoElement = document.createElement("video");
+  processingVideoElement.muted = true;
+  processingVideoElement.playsInline = true;
+  processingVideoElement.srcObject = stream;
+
+  processingVideoElement.onloadeddata = () => {
+    beginFrameProcessing();
+  };
+});
+
+stopLiveBtn.addEventListener("click", () => {
+  if (!isSessionActive) return; // already stopped, ignore extra clicks
+
+  isSessionActive = false;
+  stopLiveBtn.style.display = "none";
+
+  if (liveStream) {
+    liveStream.getTracks().forEach((track) => track.stop());
+    liveStream = null;
+  }
+
+  runFinalFormScoring();
 });

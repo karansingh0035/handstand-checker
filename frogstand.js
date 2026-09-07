@@ -1,66 +1,75 @@
-// 🤸 FROG STAND FORM SCORING
-const scoreFrogStand = (function () {
-  const MIN_CONFIDENT_FRAMES = 15;
+// 🤸 FRONT LEVER FORM SCORING
+const scoreFrontLever = (function () {
+  const FRONT_LEVER_MIN_CONFIDENT_FRAMES = 15;
 
-  const isFrameConfident = (landmarks) =>
+  const isFrontLeverFrameConfident = (landmarks) =>
     isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
 
-  return function scoreFrogStand(history, videoWidth, videoHeight) {
-    const confidentFrames = history.filter(isFrameConfident);
+  return function scoreFrontLever(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrontLeverFrameConfident);
 
-   // Replace the old error return blocks at the top of your function with this:
-    if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
+    if (confidentFrames.length < FRONT_LEVER_MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "tracking_failed",
-          severity: "major",
-          detail: "Tracking lost on balance points. Position the camera clear of obstacles and avoid loose clothing."
-        }],
-        angles: { elbowAngle: 0, torsoAngle: 0 }
+        status: "low_confidence",
+        message:
+          "Couldn't gather enough side-on tracking frames. Make sure your hands, hips, and feet are visible simultaneously.",
       };
     }
 
     const shoulderMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "shoulderMid");
     const hipMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "hipMid");
+    const ankleMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "ankleMid");
     const wristMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "wristMid");
     const elbowMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "elbowMid");
 
-    if (!shoulderMid || !hipMid || !wristMid || !elbowMid) {
+    if (!shoulderMid || !hipMid || !ankleMid || !wristMid || !elbowMid) {
       return {
         status: "low_confidence",
-        message: "Tracking lost on critical arm or torso joints.",
+        message: "Some key tracking joints were obscured during the hold.",
       };
     }
 
     const faults = [];
 
-    // 1️⃣ Deep Elbow Bend: Frog stand relies on a lower shelf (ideal angle is 85° - 115°)
+    // 1️⃣ Elbow Lockout
     const elbowAngle = angleBetween(wristMid, elbowMid, shoulderMid);
-    if (elbowAngle !== null && (elbowAngle < 75 || elbowAngle > 125)) {
+    const elbowDeviation = elbowAngle === null ? 0 : 180 - elbowAngle;
+    if (elbowDeviation > 15) {
       faults.push({
-        id: "suboptimal_elbow_bend",
-        severity: "moderate",
-        detail: `Your elbow bend is ${elbowAngle.toFixed(0)}°. Aim for roughly a 90° to 110° bend to establish a solid lateral support base.`,
+        id: "bent_arms",
+        severity: elbowDeviation > 30 ? "major" : "moderate",
+        detail: `Arms are slightly bent by ${elbowDeviation.toFixed(0)}°. Keep elbows locked out fully.`,
       });
     }
 
-    // 2️⃣ Torso Pitch: Torso should be angled forward but stabilized
-    const dx = hipMid.x - shoulderMid.x;
-    const dy = hipMid.y - shoulderMid.y;
-    const torsoAngle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    if (torsoAngle < 5 || torsoAngle > 45) {
+    // 2️⃣ Hip Sag/Pike
+    const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
+    if (bodyLineDeviation !== null && Math.abs(bodyLineDeviation) > 12) {
       faults.push({
-        id: "poor_balance_pitch",
-        severity: "moderate",
-        detail: "Your body is tilting too far forward or sitting too vertical. Find the sweet spot to balance your weight evenly over your palms.",
+        id: "hip_sag_or_pike",
+        severity: Math.abs(bodyLineDeviation) > 25 ? "major" : "moderate",
+        detail: `Your hips are ${bodyLineDeviation > 0 ? "piking up" : "sagging downward"} by ${Math.abs(bodyLineDeviation).toFixed(0)}°. Retract your scapula and squeeze your glutes.`,
       });
     }
 
-    let score = 100;
+    // 3️⃣ Horizontal Ground Alignment
+    const dx = ankleMid.x - shoulderMid.x;
+    const dy = ankleMid.y - shoulderMid.y;
+    const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+    const tiltFromHorizontal = Math.min(rawTilt, Math.abs(180 - rawTilt));
+    if (tiltFromHorizontal > 15) {
+      faults.push({
+        id: "lever_not_parallel",
+        severity: tiltFromHorizontal > 25 ? "major" : "moderate",
+        detail: `Your lever is resting at a ${tiltFromHorizontal.toFixed(0)}° tilt off horizontal. Pull the bar down to your hips to elevate your lower body.`,
+      });
+    }
+
     const severityPenalty = { moderate: 8, major: 18 };
-    faults.forEach((f) => { score -= severityPenalty[f.severity] || 0; });
+    let score = 100;
+    faults.forEach((f) => {
+      score -= severityPenalty[f.severity] || 0;
+    });
     score = Math.max(0, Math.round(score));
 
     return {
@@ -69,9 +78,80 @@ const scoreFrogStand = (function () {
       faults,
       angles: {
         elbowAngle: round1(elbowAngle),
-        torsoAngle: round1(torsoAngle)
+        bodyLineAngle: round1(angleBetween(shoulderMid, hipMid, ankleMid)),
+        tiltFromHorizontal: round1(tiltFromHorizontal),
       },
     };
   };
 })();
-window.scoreFrogStand = scoreFrogStand;
+window.scoreFrontLever = scoreFrontLever;
+
+const validateFrontLeverVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleFrontLeverFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.elbowMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    const armsStraight = elbowAngle !== null && elbowAngle > 150;
+
+    const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
+    const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
+    const isHorizontal = dx > dy;
+    const bodyBelowGrip = joints.shoulderMid.y > joints.wristMid.y;
+
+    return armsStraight && isHorizontal && bodyBelowGrip;
+  }
+
+  return function validateFrontLeverVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the hold for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleFrontLeverFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a front lever in this video. Make sure your body is horizontal below the bar with straight arms, filmed from the side.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A front lever hold may be present, but the camera angle or framing is unclear. Please re-record from the side with your full body visible.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateFrontLeverVideo = validateFrontLeverVideo;

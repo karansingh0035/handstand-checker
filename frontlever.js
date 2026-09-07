@@ -89,3 +89,76 @@ const scoreFrontLever = (function () {
   };
 })();
 window.scoreFrontLever = scoreFrontLever;
+
+// 🆕 FRONT LEVER SKILL-VERIFICATION CHECK
+const validateFrontLeverVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleFrontLeverFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.elbowMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    const armsStraight = elbowAngle !== null && elbowAngle > 150;
+
+    const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
+    const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
+    const isHorizontal = dx > dy;
+
+    // Body hangs suspended below hands/grip
+    const bodyBelowGrip = joints.shoulderMid.y > joints.wristMid.y;
+
+    return armsStraight && isHorizontal && bodyBelowGrip;
+  }
+
+  return function validateFrontLeverVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the hold for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleFrontLeverFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a front lever in this video. Make sure your body is horizontal below the bar with straight arms, filmed from the side.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A front lever hold may be present, but the camera angle or framing is unclear. Please re-record from the side with your full body visible.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateFrontLeverVideo = validateFrontLeverVideo;

@@ -1,6 +1,4 @@
 // 🤸 BACK LEVER FORM SCORING
-// Scope (v1): Standard horizontal back lever hold (face down). Scored via one 
-// representative median pose across the clip. Best captured from a strict side-on angle.
 const scoreBackLever = (function () {
   const BACK_LEVER_MIN_CONFIDENT_FRAMES = 15;
 
@@ -33,7 +31,7 @@ const scoreBackLever = (function () {
 
     const faults = [];
 
-    // 1️⃣ Elbow Lockout: Arms must stay fully locked under tension
+    // 1️⃣ Elbow Lockout
     const elbowAngle = angleBetween(wristMid, elbowMid, shoulderMid);
     const elbowDeviation = elbowAngle === null ? 0 : 180 - elbowAngle;
     if (elbowDeviation > 15) {
@@ -44,10 +42,9 @@ const scoreBackLever = (function () {
       });
     }
 
-    // 2️⃣ Hip Alignment: Straight line from shoulders through hips to ankles
-    const bodyLineAngle = angleBetween(shoulderMid, hipMid, ankleMid);
-    const bodyLineDeviation = bodyLineAngle === null ? 0 : 180 - bodyLineAngle;
-    if (Math.abs(bodyLineDeviation) > 15) {
+    // 2️⃣ Hip Alignment
+    const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
+    if (bodyLineDeviation !== null && Math.abs(bodyLineDeviation) > 12) {
       faults.push({
         id: "hip_misalignment",
         severity: Math.abs(bodyLineDeviation) > 28 ? "major" : "moderate",
@@ -55,7 +52,7 @@ const scoreBackLever = (function () {
       });
     }
 
-    // 3️⃣ Horizontal Ground Alignment: The body axis must be level with the floor
+    // 3️⃣ Horizontal Ground Alignment
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
     const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
@@ -68,7 +65,6 @@ const scoreBackLever = (function () {
       });
     }
 
-    // --- Deduct score by fault severity ---
     const severityPenalty = { moderate: 8, major: 18 };
     let score = 100;
     faults.forEach((f) => {
@@ -82,10 +78,80 @@ const scoreBackLever = (function () {
       faults,
       angles: {
         elbowAngle: round1(elbowAngle),
-        bodyLineAngle: round1(bodyLineAngle),
+        bodyLineAngle: round1(angleBetween(shoulderMid, hipMid, ankleMid)),
         tiltFromHorizontal: round1(tiltFromHorizontal),
       },
     };
   };
 })();
 window.scoreBackLever = scoreBackLever;
+
+const validateBackLeverVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleLeverFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.elbowMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    const armsStraight = elbowAngle !== null && elbowAngle > 155;
+
+    const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
+    const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
+    const isHorizontal = dx > dy;
+    const bodyBelowGrip = joints.shoulderMid.y > joints.wristMid.y;
+
+    return armsStraight && isHorizontal && bodyBelowGrip;
+  }
+
+  return function validateBackLeverVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the hold for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleLeverFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a back lever in this video. Make sure your body is horizontal below the bar with straight arms, filmed from the side.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A lever hold may be present, but the camera angle or framing is unclear. Please re-record from the side with your full body visible.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateBackLeverVideo = validateBackLeverVideo;

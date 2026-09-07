@@ -1,7 +1,4 @@
 // 🤸 90-DEGREE HOLD FORM SCORING
-// Scope (v1): Standard two-arm 90-degree hold (bent-arm planche). Body suspended horizontally
-// parallel to the ground, with elbows bent at roughly a 90-degree angle. Scored via one
-// representative median pose across the clip. Best captured from a complete side-on angle.
 const score90DegreeHold = (function () {
   const MIN_CONFIDENT_FRAMES = 15;
 
@@ -33,10 +30,10 @@ const score90DegreeHold = (function () {
 
     const faults = [];
 
-    // 1️⃣ Elbow Angle Check: Must hold roughly a 90-degree bend
+    // 1️⃣ Elbow Angle Check
     const elbowAngle = angleBetween(wristMid, elbowMid, shoulderMid);
     if (elbowAngle !== null) {
-      const elbowDeviation = elbowAngle - 90; // Positive means too straight, negative means too bent
+      const elbowDeviation = elbowAngle - 90;
       if (Math.abs(elbowDeviation) > 15) {
         faults.push({
           id: "incorrect_elbow_angle",
@@ -48,18 +45,17 @@ const score90DegreeHold = (function () {
       }
     }
 
-    // 2️⃣ Body Line Alignment: Straight line from shoulders through hips to ankles
-    const bodyLineAngle = angleBetween(shoulderMid, hipMid, ankleMid);
-    const bodyLineDeviation = bodyLineAngle === null ? 0 : 180 - bodyLineAngle;
-    if (Math.abs(bodyLineDeviation) > 15) {
+    // 2️⃣ Body Line Alignment
+    const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
+    if (bodyLineDeviation !== null && Math.abs(bodyLineDeviation) > 12) {
       faults.push({
         id: "hip_misalignment",
         severity: Math.abs(bodyLineDeviation) > 28 ? "major" : "moderate",
-        detail: `Your hips are ${bodyLineDeviation > 0 ? "sagging down" : "piking upward"} by about ${Math.abs(bodyLineDeviation).toFixed(0)}° from a straight line.`,
+        detail: `Your lower body is ${bodyLineDeviation > 0 ? "sagging below horizontal" : "piking upward"} by about ${Math.abs(bodyLineDeviation).toFixed(0)}°. Maintain a straight line from shoulders to toes.`,
       });
     }
 
-    // 3️⃣ Horizontal Ground Alignment: The entire body axis must stay level with the floor
+    // 3️⃣ Horizontal Ground Alignment
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
     const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
@@ -72,7 +68,6 @@ const score90DegreeHold = (function () {
       });
     }
 
-    // --- Deduct score by fault severity ---
     const severityPenalty = { moderate: 8, major: 18 };
     let score = 100;
     faults.forEach((f) => {
@@ -86,10 +81,77 @@ const score90DegreeHold = (function () {
       faults,
       angles: {
         elbowAngle: round1(elbowAngle),
-        bodyLineAngle: round1(bodyLineAngle),
+        bodyLineAngle: round1(angleBetween(shoulderMid, hipMid, ankleMid)),
         tiltFromHorizontal: round1(tiltFromHorizontal),
       },
     };
   };
 })();
 window.score90DegreeHold = score90DegreeHold;
+
+const validate90DegreeHoldVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausible90DegreeHoldFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.elbowMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    if (elbowAngle === null || elbowAngle < 50 || elbowAngle > 130) return false;
+
+    const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
+    const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
+    return dx > dy;
+  }
+
+  return function validate90DegreeHoldVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the hold for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausible90DegreeHoldFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a 90-degree hold in this video. Make sure your full body is visible from the side with elbows bent, suspended horizontally.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A 90-degree hold may be present, but the camera angle or framing is unclear. Please re-record from the side with your full body visible.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validate90DegreeHoldVideo = validate90DegreeHoldVideo;

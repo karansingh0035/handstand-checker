@@ -1,11 +1,4 @@
 // 🧰 SHARED POSE UTILITIES
-// Common geometry + landmark helpers used by every skill's scoring function
-// (scoreHandstand, scorePushup, and whatever comes next). Keeping this in
-// one place means every skill benefits from the same fixes — e.g. if we
-// improve the aspect-ratio correction later, every skill gets it at once
-// instead of needing the same fix copy-pasted into N files.
-
-// MediaPipe Pose landmark indices used across skills
 const POSE_LANDMARKS = {
   LEFT_SHOULDER: 11,
   RIGHT_SHOULDER: 12,
@@ -21,15 +14,8 @@ const POSE_LANDMARKS = {
   RIGHT_ANKLE: 28,
 };
 
-const MIN_VISIBILITY = 0.5; // Below this, a landmark is too unreliable to trust
+const MIN_VISIBILITY = 0.5;
 
-// Per-side landmark groupings. Needed because a video filmed side-on (the
-// natural angle for push-ups, since it's the only angle that actually shows
-// elbow bend depth and hip sag/pike) will have the far side of the body
-// partially hidden behind the torso for the whole clip — MediaPipe still
-// emits a low-confidence guess for those hidden points rather than nothing,
-// so code has to explicitly check visibility per side instead of assuming
-// both sides are equally trustworthy every frame.
 const LEFT_SIDE_LANDMARKS = [
   POSE_LANDMARKS.LEFT_SHOULDER, POSE_LANDMARKS.LEFT_ELBOW, POSE_LANDMARKS.LEFT_WRIST,
   POSE_LANDMARKS.LEFT_HIP, POSE_LANDMARKS.LEFT_KNEE, POSE_LANDMARKS.LEFT_ANKLE,
@@ -43,10 +29,7 @@ function isSideVisible(landmarks, sideIndices) {
   return sideIndices.every((i) => landmarks[i] && landmarks[i].visibility >= MIN_VISIBILITY);
 }
 
-// Angle at point b, formed by rays b->a and b->c, in degrees.
-// 180° means a-b-c are in a straight line.
 function angleBetween(a, b, c) {
-  // 🛠️ THE FIX: If any joint is missing or untracked in this frame, exit safely
   if (!a || !b || !c || a.x === undefined || b.x === undefined || c.x === undefined) {
     return null;
   }
@@ -58,30 +41,20 @@ function angleBetween(a, b, c) {
   if (mag1 === 0 || mag2 === 0) return null;
 
   let cos = (v1.x * v2.x + v1.y * v2.y) / (mag1 * mag2);
-  cos = Math.max(-1, Math.min(1, cos)); // guard against floating-point drift past [-1, 1]
+  cos = Math.max(-1, Math.min(1, cos));
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
-// Straight-line distance between two pixel-space points. Needed by skills
-// that care about proximity between two joints rather than the angle at a
-// vertex — e.g. elbow lever's "is the elbow actually tucked against the
-// hip" check, which none of the angle-based checks so far needed.
+// Distance between two pixel-space points (safe with undefined checks)
 function distance(a, b) {
-  if (!a || !b) return null;
+  if (!a || !b || a.x === undefined || b.x === undefined) return null;
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
+const distanceBetween = distance; // Alias for backward compatibility
 
 function midpoint(a, b) {
   if (!a || !b) return null;
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-// Straight-line distance between two pixel-space points. Useful for
-// proximity checks (e.g. "are the knees actually resting near the elbows")
-// where an angle doesn't capture what needs measuring.
-function distanceBetween(a, b) {
-  if (!a || !b) return null;
-  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function averageValid(values) {
@@ -101,21 +74,11 @@ function median(values) {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-// MediaPipe normalizes x as a fraction of video WIDTH and y as a fraction
-// of video HEIGHT, independently. For a portrait 9:16 phone video, a 0.1
-// x-distance and a 0.1 y-distance represent very different real-world
-// distances — converting to pixel space first keeps angle math correct
-// regardless of the video's aspect ratio.
 function toPixelSpace(point, videoWidth, videoHeight) {
   if (!point) return null;
   return { x: point.x * videoWidth, y: point.y * videoHeight };
 }
 
-// Finds a single representative position for a landmark across a set of
-// frames, using the median rather than the mean. This matters most when
-// scoring a whole clip that includes walk-up/entry or dismount/exit motion
-// that isn't part of the actual skill — a mean gets dragged toward those
-// transition frames, a median mostly ignores them.
 function medianLandmark(frames, index) {
   const points = frames
     .map((frame) => frame[index])
@@ -129,12 +92,6 @@ function medianLandmark(frames, index) {
   };
 }
 
-// Like medianLandmark, but built on getEffectiveJoints instead of a single
-// raw landmark index — so it inherits the side-aware selection (real
-// visible-side point instead of a hidden-side guess) for any static-hold
-// skill (handstand, L-sit, ...) that scores one representative pose across
-// the whole clip. jointKey is one of getEffectiveJoints' resolved keys, e.g.
-// "hipMid", "shoulderMid", "elbowMid".
 function medianJointPoint(frames, videoWidth, videoHeight, jointKey) {
   const points = frames
     .map((frame) => getEffectiveJoints(frame, videoWidth, videoHeight))
@@ -149,10 +106,6 @@ function medianJointPoint(frames, videoWidth, videoHeight, jointKey) {
   };
 }
 
-// Builds a confidence-check function for a specific set of required
-// landmark indices. Different skills care about different joints (e.g. a
-// push-up cares about the same joints as a handstand), so this is
-// parameterized rather than hardcoded to one skill's needs.
 function makeConfidenceChecker(requiredIndices) {
   return function isFrameConfident(landmarks) {
     return requiredIndices.every(
@@ -161,12 +114,6 @@ function makeConfidenceChecker(requiredIndices) {
   };
 }
 
-// Like getPixelJoints, but side-aware: if only one side of the body is
-// confidently visible this frame (the normal case for a side-on push-up
-// video), that side's own points are returned directly instead of being
-// midpointed with a low-confidence guess from the hidden side. Falls back
-// to the full bilateral midpoint when both sides are visible (e.g. a
-// front-on video). Returns null if NEITHER side is confidently visible.
 function getEffectiveJoints(landmarks, videoWidth, videoHeight) {
   const leftVisible = isSideVisible(landmarks, LEFT_SIDE_LANDMARKS);
   const rightVisible = isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
@@ -198,8 +145,6 @@ function getEffectiveJoints(landmarks, videoWidth, videoHeight) {
     rightKnee: side === "RIGHT" ? knee : null,
     leftAnkle: side === "LEFT" ? ankle : null,
     rightAnkle: side === "RIGHT" ? ankle : null,
-    // Single-side "mid" points are just that side's real point — more
-    // accurate than blending with a hidden-side guess.
     shoulderMid: shoulder,
     elbowMid: elbow,
     hipMid: hip,
@@ -210,10 +155,6 @@ function getEffectiveJoints(landmarks, videoWidth, videoHeight) {
   };
 }
 
-// Converts one frame's raw landmarks into pixel-space midpoints for the
-// joints every skill tends to need (shoulder/hip/knee/ankle midpoints,
-// individual wrist/elbow points). Returns null if any required landmark is
-// missing entirely (confidence checking happens separately).
 function getPixelJoints(landmarks, videoWidth, videoHeight) {
   const px = (index) => toPixelSpace(landmarks[index], videoWidth, videoHeight);
 
@@ -240,4 +181,59 @@ function getPixelJoints(landmarks, videoWidth, videoHeight) {
     ankleMid: midpoint(leftAnkle, rightAnkle),
     wristMid: midpoint(leftWrist, rightWrist),
   };
+}
+
+const MIN_TOTAL_FRAMES = 30;
+
+function validateVideoQuality(frames) {
+  const total = frames.length;
+
+  if (total < MIN_TOTAL_FRAMES) {
+    return {
+      valid: false,
+      confidence: 0,
+      message:
+        "This video is too short to analyze. Please record for at least a few seconds with your full body clearly in frame.",
+    };
+  }
+
+  const usable = frames.filter((frame) => {
+    if (!frame || frame.length === 0) return false;
+    const visibilities = frame.map((lm) => (lm && lm.visibility !== undefined ? lm.visibility : 0));
+    const avgVisibility = visibilities.reduce((a, b) => a + b, 0) / visibilities.length;
+    return avgVisibility >= MIN_VISIBILITY;
+  });
+
+  const ratio = usable.length / Math.max(total, 1);
+
+  if (ratio < 0.7) {
+    return {
+      valid: false,
+      confidence: ratio,
+      message:
+        "We could not detect a person clearly enough throughout this video. Use good lighting, keep your full body in frame, and make sure only one person is visible.",
+    };
+  }
+
+  return { valid: true, confidence: ratio };
+}
+
+// Computes signed body line angle deviation from 180° (straight).
+// Positive values indicate piking/sagging in one direction, negative in the other,
+// automatically normalized across left-facing or right-facing profile shots.
+function signedBodyLineDeviation(shoulder, hip, ankle) {
+  const lineAngle = angleBetween(shoulder, hip, ankle);
+  if (lineAngle === null) return null;
+
+  const deviation = 180 - lineAngle;
+  if (Math.abs(deviation) < 0.001) return 0;
+
+  const crossProduct =
+    (ankle.x - shoulder.x) * (hip.y - shoulder.y) -
+    (ankle.y - shoulder.y) * (hip.x - shoulder.x);
+
+  const facingDirection = Math.sign(ankle.x - shoulder.x) || 1;
+  const normalizedCross = crossProduct * facingDirection;
+
+  return normalizedCross > 0 ? deviation : -deviation;
 }

@@ -7,17 +7,17 @@ const scoreCrowPose = (function () {
 
   return function scoreCrowPose(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isFrameConfident);
-// Replace the old error return blocks at the top of your function with this:
+
+    // 🐛 FIX: this used to return status:"ok" with a fabricated score:0 and
+    // a fake "tracking_failed" fault — meaning an untrackable video showed
+    // up in the UI as "you scored 0/100," not as "we couldn't analyze this."
+    // Every other scoreFn in this codebase uses status:"low_confidence" here,
+    // which is what tells runFinalFormScoring() to show a re-record message
+    // instead of a real score. Fixed to match that convention.
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "tracking_failed",
-          severity: "major",
-          detail: "Couldn't gather enough clean profile frames. Keep your entire body in the camera's view during the hold."
-        }],
-        angles: { elbowAngle: 0, hipHeightDiff: 0 }
+        status: "low_confidence",
+        message: "Couldn't gather enough clean profile frames. Keep your entire body in the camera's view during the hold.",
       };
     }
 
@@ -82,3 +82,88 @@ const scoreCrowPose = (function () {
   };
 })();
 window.scoreCrowPose = scoreCrowPose;
+
+// 🆕 CROW POSE SKILL-VERIFICATION CHECK
+// Runs BEFORE scoreCrowPose, checking per-frame plausibility. Crow pose is
+// compact and tucked — bent elbows, hips elevated toward shoulder height,
+// and (distinctively, unlike the extended-body-line holds like levers,
+// planche, or 90° hold) the ANKLES stay close to the WRISTS rather than
+// far from them, since the feet are lifted up near the hands rather than
+// extended out in a straight line. This geometric compactness is the main
+// thing distinguishing crow pose from the other static holds already
+// validated, not just from "clearly wrong" footage like walking.
+const validateCrowPoseVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  // Pixel-offset constants (20, 30) intentionally mirror scoreCrowPose's own
+  // existing fault thresholds above, for consistency within this file — note
+  // this inherits the same limitation scoreCrowPose already has: a fixed
+  // pixel offset isn't scale-invariant across different filming distances,
+  // unlike the ratio-based thresholds used elsewhere in this codebase (e.g.
+  // handstand.js's lateral-lean check). Not a new problem introduced here.
+  function isPlausibleCrowFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.elbowMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    const elbowBent = elbowAngle !== null && elbowAngle > 60 && elbowAngle < 150;
+
+    const hipsElevated = joints.hipMid.y <= joints.shoulderMid.y + 20;
+
+    const feetTucked = joints.ankleMid.y < joints.wristMid.y + 30;
+
+    return elbowBent && hipsElevated && feetTucked;
+  }
+
+  return function validateCrowPoseVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the hold for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleCrowFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a crow pose in this video. Make sure your knees are tucked near your elbows with your feet lifted off the ground, filmed from the side.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A crow pose may be present, but the camera angle or framing is unclear. Please re-record from the side with your full body visible.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateCrowPoseVideo = validateCrowPoseVideo;

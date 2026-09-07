@@ -1,28 +1,9 @@
 // 🤸 HANDSTAND FORM SCORING
-// Scope (v1): standard vertical handstand, legs together, both hands down,
-// decent even lighting. Straddle/split variations are intentionally out of
-// scope for now — see roadmap notes.
-//
-// Shared geometry/landmark helpers (angleBetween, midpoint, medianLandmark,
-// POSE_LANDMARKS, etc.) live in pose-utils.js, loaded before this file.
-
-
-// 🔒 Wrapped in an IIFE so internal names (HANDSTAND_MIN_CONFIDENT_FRAMES,
-// isHandstandFrameConfident, etc.) stay private to this file and can never collide
-// with another skill file's same-named internals — only scoreHandstand
-// itself is exposed globally.
 const scoreHandstand = (function () {
-  const HANDSTAND_MIN_CONFIDENT_FRAMES = 20; // Need at least ~20 clearly-tracked frames somewhere in the clip (~0.6-1s of an actual hold)
+  const HANDSTAND_MIN_CONFIDENT_FRAMES = 20;
 
   const isHandstandFrameConfident = makeConfidenceChecker(Object.values(POSE_LANDMARKS));
 
-  // history: array of frames collected across the ENTIRE video, each frame
-  // being the raw `results.poseLandmarks` array MediaPipe gives you (33
-  // landmarks with x, y, z, visibility). Call this once, after the video has
-  // finished playing — not per-frame — so the result is one final, stable
-  // rating rather than a live number that shifts during playback.
-  // videoWidth/videoHeight: the source video's native pixel dimensions —
-  // required to correct for non-square aspect ratios before computing angles.
   return function scoreHandstand(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isHandstandFrameConfident);
 
@@ -34,9 +15,6 @@ const scoreHandstand = (function () {
       };
     }
 
-    // Find one representative position per joint across the whole clip (in
-    // normalized space), then convert to pixel space so x and y are on the
-    // same physical scale before any angle math.
     const representative = {};
     for (const name in POSE_LANDMARKS) {
       const normalized = medianLandmark(confidentFrames, POSE_LANDMARKS[name]);
@@ -58,7 +36,7 @@ const scoreHandstand = (function () {
 
     const faults = [];
 
-    // 1️⃣ Elbow lockout — wrist-elbow-shoulder should be ~180° (straight arm)
+    // 1️⃣ Elbow Lockout
     const leftElbowAngle = angleBetween(representative.LEFT_WRIST, representative.LEFT_ELBOW, representative.LEFT_SHOULDER);
     const rightElbowAngle = angleBetween(representative.RIGHT_WRIST, representative.RIGHT_ELBOW, representative.RIGHT_SHOULDER);
     const elbowAngle = averageValid([leftElbowAngle, rightElbowAngle]);
@@ -71,7 +49,7 @@ const scoreHandstand = (function () {
       });
     }
 
-    // 2️⃣ Shoulder alignment — wrist-shoulder-hip should be ~180° (no piking/hollowing at shoulders)
+    // 2️⃣ Shoulder Alignment
     const shoulderAlignAngle = angleBetween(wristMid, shoulderMid, hipMid);
     const shoulderDeviation = shoulderAlignAngle === null ? 0 : 180 - shoulderAlignAngle;
     if (Math.abs(shoulderDeviation) > 12) {
@@ -82,10 +60,9 @@ const scoreHandstand = (function () {
       });
     }
 
-    // 3️⃣ Hip alignment — shoulder-hip-ankle should be ~180° (catches banana-back arch or hip pike)
-    const hipAlignAngle = angleBetween(shoulderMid, hipMid, ankleMid);
-    const hipDeviation = hipAlignAngle === null ? 0 : 180 - hipAlignAngle;
-    if (Math.abs(hipDeviation) > 10) {
+    // 3️⃣ Hip Alignment (Signed Deviation)
+    const hipDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
+    if (hipDeviation !== null && Math.abs(hipDeviation) > 10) {
       faults.push({
         id: "hip_pike_or_arch",
         severity: Math.abs(hipDeviation) > 25 ? "major" : "moderate",
@@ -93,7 +70,7 @@ const scoreHandstand = (function () {
       });
     }
 
-    // 4️⃣ Leg straightness — hip-knee-ankle should be ~180°
+    // 4️⃣ Leg Straightness
     const legAngle = angleBetween(hipMid, kneeMid, ankleMid);
     const legDeviation = legAngle === null ? 0 : 180 - legAngle;
     if (legDeviation > 10) {
@@ -104,9 +81,7 @@ const scoreHandstand = (function () {
       });
     }
 
-    // 5️⃣ Lateral lean — checks if shoulders/hips/ankles drift sideways from the wrist line.
-    // Threshold is expressed as a fraction of video width (5%/10%) rather than a
-    // fixed pixel count, so it scales correctly across different video resolutions.
+    // 5️⃣ Lateral Lean
     const referenceX = wristMid.x;
     const lateralOffsets = [shoulderMid.x, hipMid.x, ankleMid.x].map((x) => Math.abs(x - referenceX));
     const maxLateralOffset = Math.max(...lateralOffsets);
@@ -119,7 +94,6 @@ const scoreHandstand = (function () {
       });
     }
 
-    // --- Final score: start at 100, subtract per fault by severity ---
     const severityPenalty = { moderate: 8, major: 18 };
     let score = 100;
     faults.forEach((f) => {
@@ -134,11 +108,73 @@ const scoreHandstand = (function () {
       angles: {
         elbowAngle: round1(elbowAngle),
         shoulderAlignAngle: round1(shoulderAlignAngle),
-        hipAlignAngle: round1(hipAlignAngle),
+        hipAlignAngle: round1(angleBetween(shoulderMid, hipMid, ankleMid)),
         legAngle: round1(legAngle),
       },
     };
-  }
-
+  };
 })();
 window.scoreHandstand = scoreHandstand;
+
+const validateHandstandVideo = (function () {
+  const isHandstandFrameConfident = makeConfidenceChecker(Object.values(POSE_LANDMARKS));
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 20;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleHandstandFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+    return (
+      joints.wristMid.y < joints.shoulderMid.y &&
+      joints.shoulderMid.y < joints.hipMid.y &&
+      joints.hipMid.y < joints.ankleMid.y
+    );
+  }
+
+  return function validateHandstandVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isHandstandFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We could not confidently analyze this video. Keep your full body in frame, use good lighting, and record the movement for at least 3–5 seconds.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleHandstandFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We could not verify a handstand in this video. Please upload a video where your full body is visible and you are inverted, preferably from the recommended angle.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "A handstand may be present, but the camera angle or framing is unclear. Please re-record with your full body visible and good lighting.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateHandstandVideo = validateHandstandVideo;
