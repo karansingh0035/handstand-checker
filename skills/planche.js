@@ -48,7 +48,7 @@ const scorePlanche = (function () {
 
     // 2️⃣ Body Line Alignment: Straight line from shoulders to hips to ankles
     const bodyLineAngle = angleBetween(shoulderMid, hipMid, ankleMid);
-    const bodyLineDeviation = bodyLineAngle === null ? 0 : 180 - bodyLineAngle;
+   const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
     if (Math.abs(bodyLineDeviation) > 15) {
       faults.push({
         id: "hip_misalignment",

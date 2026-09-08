@@ -46,7 +46,7 @@ const scoreFrontLever = (function () {
 
     // 2️⃣ Hip Sag/Pike: Body alignment from shoulder through hip to ankle
     const bodyLineAngle = angleBetween(shoulderMid, hipMid, ankleMid);
-    const bodyLineDeviation = bodyLineAngle === null ? 0 : 180 - bodyLineAngle;
+    const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
     if (Math.abs(bodyLineDeviation) > 12) {
       faults.push({
         id: "hip_sag_or_pike",
