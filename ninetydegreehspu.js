@@ -118,4 +118,67 @@ const score90DegreeHSPU = (function () {
     };
   };
 })();
+const validate90DegreeHSPUVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.25;
+  const UNCLEAR_RATIO = 0.5;
+
+  function isPlausible90DegreeHSPUFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.shoulderMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Inverted or dynamic bent support check (body is either vertical inverted or near horizontal)
+    const isHandsBelowShoulders = joints.wristMid.y > joints.shoulderMid.y;
+    return isHandsBelowShoulders;
+  }
+
+  return function validate90DegreeHSPUVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Not enough tracking frames found. Please record a clear side view showing your transition from handstand to bottom layout.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausible90DegreeHSPUFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't verify a 90-degree HSPU in this clip. Ensure you start inverted, bend to 90 degrees at horizontal, and push back up.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Tracking was inconsistent. Ensure good lighting and keep your whole body inside the frame from top to bottom.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validate90DegreeHSPUVideo = validate90DegreeHSPUVideo;
 window.score90DegreeHSPU = score90DegreeHSPU;

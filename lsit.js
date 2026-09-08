@@ -140,4 +140,74 @@ const scoreLsit = (function () {
     };
   };
 })();
+const validateLsitVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleLsitFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.hipMid || !joints.kneeMid) {
+      return false;
+    }
+
+    // Torso upright (shoulder-hip line near vertical)
+    const verticalReference = { x: joints.shoulderMid.x, y: joints.shoulderMid.y - 100 };
+    const torsoAngle = angleBetween(joints.hipMid, joints.shoulderMid, verticalReference);
+    const isTorsoUpright = torsoAngle !== null && Math.abs(180 - torsoAngle) < 35;
+
+    // Hip angle ~90° (legs extended forward relative to torso)
+    const hipAngle = angleBetween(joints.shoulderMid, joints.hipMid, joints.kneeMid);
+    const isLShape = hipAngle !== null && hipAngle >= 60 && hipAngle <= 120;
+
+    return isTorsoUpright && isLShape;
+  }
+
+  return function validateLsitVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We couldn't confidently analyze this video. Keep your side profile, hands, hips, and feet clearly visible.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleLsitFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't verify an L-sit in this clip. Ensure your legs are extended horizontally out in front with an upright torso, filmed from the side.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "An L-sit hold may be present, but body positioning is unclear. Ensure full body framing from a clear side angle.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateLsitVideo = validateLsitVideo;
 window.scoreLsit = scoreLsit;

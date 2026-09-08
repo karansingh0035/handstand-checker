@@ -102,4 +102,67 @@ const scorePseudoPlanchePushup = (function () {
     };
   };
 })();
+const validatePseudoPlanchePushupVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 20;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausiblePPPUFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Plank base where shoulders are near wrist level with a slight horizontal displacement
+    const isHorizontalPlank = joints.shoulderMid.y < joints.wristMid.y + 120;
+    return isHorizontalPlank;
+  }
+
+  return function validatePseudoPlanchePushupVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Set up the camera directly to your side. Your full body profile needs to be visible to track your forward lean.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausiblePPPUFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect pseudo-planche push-ups in this video. Perform push-ups from a plank position with forward shoulder lean.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Push-up movement was detected, but tracking was unstable. Ensure a steady side-on perspective with good lighting.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validatePseudoPlanchePushupVideo = validatePseudoPlanchePushupVideo;
 window.scorePseudoPlanchePushup = scorePseudoPlanchePushup;

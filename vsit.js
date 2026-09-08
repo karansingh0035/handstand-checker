@@ -73,4 +73,70 @@ const scoreVSit = (function () {
     };
   };
 })();
+const validateVSitVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleVSitFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    // Acute compression hip angle (< 85°) with legs raised
+    const hipAngle = angleBetween(joints.shoulderMid, joints.hipMid, joints.ankleMid);
+    const isAcute = hipAngle !== null && hipAngle <= 85;
+    const isFeetElevated = joints.ankleMid.y < joints.hipMid.y + 50;
+
+    return isAcute && isFeetElevated;
+  }
+
+  return function validateVSitVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Could not track your side profile clearly. Ensure your hands, hips, and toes remain visible.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleVSitFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect a V-sit hold. Make sure your legs are compressed high toward your chest in a sharp V-shape.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "V-sit position detected, but tracking was unstable. Keep your full body in frame from a clear side angle.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateVSitVideo = validateVSitVideo;
 window.scoreVSit = scoreVSit;

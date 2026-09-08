@@ -87,4 +87,69 @@ const scoreStraddlePlanche = (function () {
     };
   };
 })();
+const validateStraddlePlancheVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleStraddlePlancheFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Horizontal torso alignment with hands below shoulders
+    const isBodyHorizontal = Math.abs(joints.shoulderMid.y - joints.hipMid.y) < 150;
+    const isHandsBelowShoulders = joints.wristMid.y >= joints.shoulderMid.y - 20;
+
+    return isBodyHorizontal && isHandsBelowShoulders;
+  }
+
+  return function validateStraddlePlancheVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Biomechanical landmarks missing. Make sure your camera is perfectly side-on to evaluate your straddle line.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleStraddlePlancheFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect a straddle planche hold. Ensure your body is horizontal and supported by your arms.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Straddle planche detected, but landmark tracking was poor. Ensure high contrast against your background.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateStraddlePlancheVideo = validateStraddlePlancheVideo;
 window.scoreStraddlePlanche = scoreStraddlePlanche;

@@ -90,4 +90,69 @@ const scorePlanche = (function () {
     };
   };
 })();
+const validatePlancheVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausiblePlancheFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Shoulders elevated above or near wrist level, body horizontal
+    const isBodyHorizontal = Math.abs(joints.shoulderMid.y - joints.hipMid.y) < 150;
+    const isHandsBelowShoulders = joints.wristMid.y >= joints.shoulderMid.y - 20;
+
+    return isBodyHorizontal && isHandsBelowShoulders;
+  }
+
+  return function validatePlancheVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Couldn't track enough clear frames. Record a direct side-on view of your entire body.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausiblePlancheFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect a planche hold. Ensure your legs and body are suspended parallel to the ground from a clear side angle.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Planche shape detected, but tracking quality was low. Ensure good lighting and a steady side view.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validatePlancheVideo = validatePlancheVideo;
 window.scorePlanche = scorePlanche;

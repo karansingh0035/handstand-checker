@@ -251,5 +251,67 @@ const scorePlanchePushup = (function () {
     };
   };
 })();
+const validatePlanchePushupVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
 
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 25;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausiblePlanchePushupFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Horizontal body support with shoulders near or leaning past wrists
+    const isSupported = joints.wristMid.y >= joints.shoulderMid.y - 20;
+    return isSupported;
+  }
+
+  return function validatePlanchePushupVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Couldn't get a clear enough view. Ensure your entire body from hands to feet is in frame from a side view.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausiblePlanchePushupFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect planche push-ups. Ensure you perform push-up reps while maintaining forward shoulder lean.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Movement detected, but joint visibility was partially obscured. Record from a clear, unobstructed side perspective.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validatePlanchePushupVideo = validatePlanchePushupVideo;
 window.scorePlanchePushup = scorePlanchePushup;

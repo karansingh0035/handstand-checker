@@ -240,4 +240,67 @@ const scoreSquat = (function () {
     };
   };
 })();
+const validateSquatVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 20;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleSquatFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.hipMid || !joints.kneeMid || !joints.ankleMid) {
+      return false;
+    }
+
+    // Upright stance or squatting stance (hips above knees/ankles vertically stacked)
+    const isUprightStack = joints.shoulderMid.y < joints.hipMid.y && joints.hipMid.y < joints.ankleMid.y;
+    return isUprightStack;
+  }
+
+  return function validateSquatVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Couldn't get a clear enough view of your body. Try filming from the side with your whole body in frame.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleSquatFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect squatting reps in this video. Stand upright and squat down from a clear side angle.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Squat pattern detected, but hip and knee visibility was unstable. Keep your full body in frame.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateSquatVideo = validateSquatVideo;
 window.scoreSquat = scoreSquat;

@@ -259,4 +259,67 @@ const scoreHandstandPushup = (function () {
     };
   };
 })();
+const validateHandstandPushupVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 20;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleHSPUFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.shoulderMid || !joints.hipMid || !joints.ankleMid) {
+      return false;
+    }
+
+    // Body is inverted (feet above shoulders/wrists)
+    const isInverted = joints.ankleMid.y < joints.hipMid.y && joints.hipMid.y < joints.shoulderMid.y;
+    return isInverted;
+  }
+
+  return function validateHandstandPushupVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "We couldn't track enough video frames cleanly. Ensure your full inverted body from hands to feet is visible.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleHSPUFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect handstand push-ups in this video. Make sure your body is fully inverted (hands on ground, feet pointing up) and filmed from a side angle.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Inverted movement detected, but tracking clarity was poor. Try recording from a steady side angle with good contrast.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateHandstandPushupVideo = validateHandstandPushupVideo;
 window.scoreHandstandPushup = scoreHandstandPushup;

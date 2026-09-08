@@ -158,4 +158,67 @@ const scorePullup = (function () {
     };
   };
 })();
+const validatePullupVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 20;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausiblePullupFrame(joints) {
+    if (!joints || !joints.wristMid || !joints.shoulderMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Hands/wrists are above shoulders (hanging posture)
+    const isHanging = joints.wristMid.y < joints.shoulderMid.y;
+    return isHanging;
+  }
+
+  return function validatePullupVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Could not track your pull-up cleanly. Ensure a clear side view from your hands down to your feet.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausiblePullupFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect a pull-up hanging setup in this clip. Ensure your hands are gripping a bar overhead.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Hanging movement detected, but tracking was inconsistent. Keep your entire body inside the camera frame.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validatePullupVideo = validatePullupVideo;
 window.scorePullup = scorePullup;

@@ -210,4 +210,69 @@ const scoreElbowLever = (function () {
     };
   };
 })();
+const validateElbowLeverVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausibleElbowLeverFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.elbowMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Elbows should be bent moderately and body extended near horizontal
+    const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
+    const isElbowBent = elbowAngle !== null && elbowAngle >= 40 && elbowAngle <= 140;
+
+    return isElbowBent;
+  }
+
+  return function validateElbowLeverVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Not enough tracking data. Please ensure a clear side profile showing your arms, hips, and body line.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausibleElbowLeverFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect an elbow lever position in this video. Make sure your elbows are tucked into your hips and your body is supported parallel to the ground.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Elbow lever hold detected, but key body features were difficult to track cleanly. Improve lighting and ensure a clear side angle.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validateElbowLeverVideo = validateElbowLeverVideo;
 window.scoreElbowLever = scoreElbowLever;
