@@ -28,6 +28,45 @@ const SIGNAL_HYSTERESIS = {
   muscleup: { troughExitDelta: 0.25, topReturnDelta: 0.15, bottomOvershootDelta: 0.6, expectedRom: 1.0 }
 };
 
+// 🆕 Per-movement rep plausibility checks — evaluated once per completed
+// rep, using metrics the segmenter already tracks (no new tracking added).
+// Confidence genuinely varies by movement, stated honestly rather than
+// applying a uniform check everywhere:
+//
+// - Push-family: STRONG. A real rep must get the torso reasonably
+//   horizontal at its most-tilted moment — standing upright and swinging
+//   your arms cannot fake this regardless of how the elbow angle moves.
+// - Squat: WEAK/backstop only. A loose ceiling that mainly rules out
+//   extreme forward-fold-style motion, not a strong positive signal —
+//   squat's knee-angle swing is already a fairly reliable discriminator
+//   on its own.
+// - Pull-family (pullup, muscleup): STRONG, different physical signature
+//   than the push-family check. A real hang-based rep means the WRIST
+//   stays roughly fixed (gripping a static bar) while the SHOULDER moves
+//   substantially relative to it. Someone standing and swinging their
+//   arms produces the opposite signature — wrist moves a lot, shoulder
+//   barely does. Both sides are measured the same way (running min/max
+//   range across the whole rep), so this is a clean, symmetric comparison
+//   — not the mismatched-snapshot approach originally ruled out.
+const PLAUSIBILITY_CHECKS = {
+  pushup: (rep) => rep.torsoVertical >= 40,
+  handstandpushup: (rep) => rep.torsoVertical >= 40,
+  ninetydegreehspu: (rep) => rep.torsoVertical >= 40,
+  planchepushup: (rep) => rep.torsoVertical >= 40,
+  pikepushup: (rep) => rep.torsoVertical >= 30, // pike position is naturally more upright than a flat pushup — lower bar
+  squat: (rep) => rep.torsoVertical <= 70,
+  pullup: (rep) => {
+    const wristRange = rep.maxWristY - rep.minWristY;
+    const shoulderRange = rep.maxShoulderY - rep.minShoulderY;
+    return (shoulderRange - wristRange) > 0.06;
+  },
+  muscleup: (rep) => {
+    const wristRange = rep.maxWristY - rep.minWristY;
+    const shoulderRange = rep.maxShoulderY - rep.minShoulderY;
+    return (shoulderRange - wristRange) > 0.06;
+  },
+};
+
 export class TrueFormEngine {
   constructor(movementKey = 'pushup') {
     this.movementKey = movementKey;
@@ -39,7 +78,10 @@ export class TrueFormEngine {
 
   setMovement(movementKey) {
     this.movementKey = movementKey;
-    this.segmenter.configure(SIGNAL_HYSTERESIS[movementKey] || SIGNAL_HYSTERESIS.default);
+    this.segmenter.configure({
+      ...(SIGNAL_HYSTERESIS[movementKey] || SIGNAL_HYSTERESIS.default),
+      plausibilityCheck: PLAUSIBILITY_CHECKS[movementKey] || null,
+    });
     this.reset();
   }
 
@@ -134,6 +176,7 @@ export class TrueFormEngine {
       hipLineAngle: bodyLineData.angle,
       verticalProgress: vertProgress,
       hipY: hip.y,
+      shoulderY: shoulder.y,
       kneeY: lm[25] ? lm[25].y : 0,
       noseY: lm[0] ? lm[0].y : 0,
       wristY: lm[15] ? lm[15].y : 0

@@ -18,6 +18,12 @@ export class RepSegmenter {
     this.topReturnDelta = options.topReturnDelta || 8.0;
     this.bottomOvershootDelta = options.bottomOvershootDelta || 35.0;
 
+    // 🆕 Optional per-movement plausibility check, evaluated once per
+    // completed rep (see configure() and the isValid computation below).
+    // null means "no extra check" — every movement's behavior is
+    // unchanged unless TrueFormEngine explicitly configures one.
+    this.plausibilityCheck = options.plausibilityCheck || null;
+
     this.state = 'SEARCHING_START';
     this.completedReps = [];
     this.currentRep = null;
@@ -32,6 +38,7 @@ export class RepSegmenter {
     if (options.topReturnDelta !== undefined) this.topReturnDelta = options.topReturnDelta;
     if (options.bottomOvershootDelta !== undefined) this.bottomOvershootDelta = options.bottomOvershootDelta;
     if (options.expectedRom !== undefined) this.expectedRom = options.expectedRom;
+    if ('plausibilityCheck' in options) this.plausibilityCheck = options.plausibilityCheck;
   }
 
   processFrame(metrics, timestamp = performance.now()) {
@@ -49,6 +56,7 @@ export class RepSegmenter {
       hipLineAngle,
       verticalProgress,
       hipY = 0,
+      shoulderY = 0,
       kneeY = 0,
       noseY = 0,
       wristY = 0
@@ -94,7 +102,16 @@ export class RepSegmenter {
         bottomHipY: hipY,
         bottomKneeY: kneeY,
         topNoseY: noseY,
-        topWristY: wristY
+        topWristY: wristY,
+
+        // 🆕 Running min/max of wrist and shoulder Y across the WHOLE rep —
+        // for the pull-family plausibility check. Deliberately separate
+        // from topWristY above (a single snapshot at the rep's peak) since
+        // this needs the full RANGE across the rep, not one moment.
+        minWristY: wristY,
+        maxWristY: wristY,
+        minShoulderY: shoulderY,
+        maxShoulderY: shoulderY
       };
       this.state = 'DESCENDING';
     } 
@@ -109,6 +126,10 @@ export class RepSegmenter {
       this.currentRep.maxShoulderLean = Math.max(this.currentRep.maxShoulderLean, shoulderLean);
       this.currentRep.maxHipLineAngle = Math.max(this.currentRep.maxHipLineAngle, hipLineAngle);
       this.currentRep.maxVerticalProgress = Math.max(this.currentRep.maxVerticalProgress, verticalProgress);
+      this.currentRep.minWristY = Math.min(this.currentRep.minWristY, wristY);
+      this.currentRep.maxWristY = Math.max(this.currentRep.maxWristY, wristY);
+      this.currentRep.minShoulderY = Math.min(this.currentRep.minShoulderY, shoulderY);
+      this.currentRep.maxShoulderY = Math.max(this.currentRep.maxShoulderY, shoulderY);
       if (isSag) this.currentRep.hasSagged = true;
       if (isPike) this.currentRep.hasPiked = true;
 
@@ -187,13 +208,33 @@ export class RepSegmenter {
             hipY: this.currentRep.bottomHipY,
             kneeY: this.currentRep.bottomKneeY,
             noseY: this.currentRep.topNoseY,
-            wristY: this.currentRep.topWristY
+            wristY: this.currentRep.topWristY,
+
+            // 🆕 Full-rep ranges for the pull-family plausibility check
+            minWristY: this.currentRep.minWristY,
+            maxWristY: this.currentRep.maxWristY,
+            minShoulderY: this.currentRep.minShoulderY,
+            maxShoulderY: this.currentRep.maxShoulderY
           };
+
+          // 🆕 Once-per-rep plausibility gate: catches irrelevant motion
+          // (e.g. standing and swinging your arms while "pushup" is
+          // selected) that could otherwise accidentally satisfy
+          // primarySignal's threshold crossings without the body actually
+          // resembling the selected skill. Folds straight into the
+          // existing isValid check, so a failure here routes through the
+          // SAME REP_REJECTED path a too-shallow or too-short rep already
+          // takes — no new event type, no cue, no rep counted, and no
+          // changes needed anywhere downstream of this file.
+          const passesPlausibility = this.plausibilityCheck
+            ? this.plausibilityCheck(repData)
+            : true;
 
           const isValid = avgConf >= 0.60 &&
                           rom >= (this.expectedRom * 0.40) &&
                           durationS >= this.minRepDuration &&
-                          durationS <= this.maxRepDuration;
+                          durationS <= this.maxRepDuration &&
+                          passesPlausibility;
 
           this.state = 'SEARCHING_START';
 
