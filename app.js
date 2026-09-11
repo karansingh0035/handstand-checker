@@ -1,5 +1,5 @@
 // app.js
-import { TrueFormEngine } from './engine/index.js';
+import { TrueFormEngine, warmUpSpeech } from './engine/index.js';
 
 // 1️⃣ DOM INTERFACE ELEMENTS & TARGET HANDLES
 const plusBtn = document.getElementById("plus");
@@ -32,6 +32,8 @@ let landmarkHistory = [];
 let analysisFinalized = false; 
 let activeSkillConfig = null;  
 let isLiveEngineEnabled = false; 
+let currentVisualCue = null;
+let visualCueTimer = null; 
 
 // 🆕 Tracks whether ANY session (uploaded video OR live camera) is
 // currently supposed to be feeding frames. A live camera stream has no
@@ -198,9 +200,17 @@ function onPoseResults(results) {
         repDisplay.innerText = frameResult.repCount;
       }
 
-      // 3. Draw visual coaching cue pill on canvas
+      // 3. Draw visual coaching cue pill on canvas (persisted for ~2.5s to match audio)
       if (frameResult.activeCue) {
-        drawCueOverlay(ctx, frameResult.activeCue.cue);
+        currentVisualCue = frameResult.activeCue.cue;
+        if (visualCueTimer) clearTimeout(visualCueTimer);
+        visualCueTimer = setTimeout(() => {
+          currentVisualCue = null;
+        }, 2500);
+      }
+
+      if (currentVisualCue) {
+        drawCueOverlay(ctx, currentVisualCue);
       }
     } else {
       // Bypassed for static holds/levers — clear or hide rep counters
@@ -496,12 +506,19 @@ function prepareSession() {
   landmarkHistory = [];
   analysisFinalized = false;
   formScoreValue.textContent = "--";
+  currentVisualCue = null;
+  if (visualCueTimer) {
+    clearTimeout(visualCueTimer);
+    visualCueTimer = null;
+  }
 
   return skillConfig;
 }
 
 // 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
 uploadBtn.addEventListener("click", () => {
+  warmUpSpeech();
+
   if (!uploadedVideoFile) {
     alert("Please click the '+' button to select a form video first!");
     return;
@@ -534,6 +551,8 @@ uploadBtn.addEventListener("click", () => {
 // instead of a picked file, and ended manually via a Stop button instead
 // of a natural "ended" event.
 goLiveBtn.addEventListener("click", async () => {
+  warmUpSpeech();
+
   const skillConfig = prepareSession();
   if (!skillConfig) return;
 
@@ -576,6 +595,11 @@ stopLiveBtn.addEventListener("click", () => {
 
   isSessionActive = false;
   stopLiveBtn.style.display = "none";
+  currentVisualCue = null;
+  if (visualCueTimer) {
+    clearTimeout(visualCueTimer);
+    visualCueTimer = null;
+  }
 
   if (liveStream) {
     liveStream.getTracks().forEach((track) => track.stop());

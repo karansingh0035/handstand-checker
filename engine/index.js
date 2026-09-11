@@ -7,23 +7,106 @@ import { ProgressionManager } from './progression.js';
 import { angle, torsoVertical, bodyLine, shoulderLean, verticalProgress } from './primitives.js';
 
 // engine/index.js (Top level)
-let isSpeaking = false;
+let cachedVoice = null;
+let currentUtterance = null;
+let pendingSpeakTimeout = null;
+
+function loadBestVoice() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  // 1. Prioritize a local (offline) English voice to eliminate network latency
+  const localEnglish = voices.find((v) => v.lang && v.lang.startsWith('en') && v.localService === true);
+  if (localEnglish) {
+    cachedVoice = localEnglish;
+    return cachedVoice;
+  }
+
+  // 2. Any local (offline) voice
+  const anyLocal = voices.find((v) => v.localService === true);
+  if (anyLocal) {
+    cachedVoice = anyLocal;
+    return cachedVoice;
+  }
+
+  // 3. Fallback to default or any English voice
+  const defaultEnglish = voices.find((v) => v.lang && v.lang.startsWith('en') && v.default);
+  const english = voices.find((v) => v.lang && v.lang.startsWith('en'));
+  cachedVoice = defaultEnglish || english || voices[0] || null;
+  return cachedVoice;
+}
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    loadBestVoice();
+  };
+  loadBestVoice();
+}
+
+/**
+ * Primes the browser's SpeechSynthesis engine and audio subsystem on user gesture.
+ * Call this inside user-driven click handlers (e.g. "Go Live" or "Upload").
+ */
+export function warmUpSpeech() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  loadBestVoice();
+  try {
+    // Silent micro-utterance to wake up audio hardware without sound
+    const silent = new SpeechSynthesisUtterance(' ');
+    silent.volume = 0.01;
+    silent.rate = 2.0;
+    if (cachedVoice) silent.voice = cachedVoice;
+    window.speechSynthesis.speak(silent);
+  } catch (e) {}
+}
 
 export function speakCue(text) {
-  if (!('speechSynthesis' in window) || !text) return;
-  
-  // Stale voice queue immediately flush karo
-  window.speechSynthesis.cancel();
+  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.25; // 1.25x speed fast feedback delivery ke liye
+  // Clear any scheduled delayed speak
+  if (pendingSpeakTimeout) {
+    clearTimeout(pendingSpeakTimeout);
+    pendingSpeakTimeout = null;
+  }
+
+  // Sanitize text: replace em-dashes with comma to remove TTS grammatical pause
+  const cleanText = text.replace(/—/g, ', ').replace(/\s+/g, ' ').trim();
+
+  // Cancel any ongoing or pending speech to give instant feedback
+  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    window.speechSynthesis.cancel();
+  }
+
+  // Resume in case Chromium put the synthesizer in a paused state
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+  }
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.rate = 1.3; // Snappy delivery
   utterance.pitch = 1.0;
 
-  utterance.onend = () => { isSpeaking = false; };
-  utterance.onerror = () => { isSpeaking = false; };
+  const voice = cachedVoice || loadBestVoice();
+  if (voice) {
+    utterance.voice = voice;
+  }
 
-  isSpeaking = true;
-  window.speechSynthesis.speak(utterance);
+  // Retain strong reference to prevent V8 garbage-collecting the utterance mid-speech
+  currentUtterance = utterance;
+
+  utterance.onend = () => {
+    if (currentUtterance === utterance) currentUtterance = null;
+  };
+  utterance.onerror = () => {
+    if (currentUtterance === utterance) currentUtterance = null;
+  };
+
+  // 10ms micro-delay prevents Chromium race condition where immediate speak after cancel stalls
+  pendingSpeakTimeout = setTimeout(() => {
+    window.speechSynthesis.speak(utterance);
+    pendingSpeakTimeout = null;
+  }, 10);
 }
 
 // 🆕 RepSegmenter's hysteresis/ROM thresholds are tuned for degree-based
