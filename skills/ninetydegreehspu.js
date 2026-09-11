@@ -9,17 +9,13 @@ const score90DegreeHSPU = (function () {
   return function score90DegreeHSPU(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(f => isSideVisible(f, LEFT_SIDE_LANDMARKS) || isSideVisible(f, RIGHT_SIDE_LANDMARKS));
 
+    // 🐛 FIX: was status:"ok"/score:0 with a fabricated fault — same bug
+    // as planchelean.js/pseudoplanchepushup.js. Fixed to match the
+    // low_confidence convention used everywhere else.
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "low_visibility",
-          severity: "major",
-          detail: "The camera lost sight of your side profile. Ensure your entire body stays inside the video frame from handstand to bottom layout."
-        }],
-        repCount: 0,
-        reps: []
+        status: "low_confidence",
+        message: "The camera lost sight of your side profile. Ensure your entire body stays inside the video frame from handstand to bottom layout.",
       };
     }
 
@@ -36,10 +32,19 @@ const score90DegreeHSPU = (function () {
       const rightElbow = angleBetween(joints.rightWrist, joints.rightElbow, joints.rightShoulder);
       const currentElbow = averageValid([leftElbow, rightElbow]);
 
+      // 🆕 Same fix as backlever.js/frontlever.js/90degreehold.js/
+      // planche.js/pushup.js: dx alone only captures "horizontal" when
+      // filmed side-on. Folding dz into the horizontal component via
+      // hypot makes this yaw-invariant, and since hypot() is always >= 0,
+      // atan2 now naturally stays within (-90°,90°) — the old
+      // Math.min(currentTilt, Math.abs(180 - currentTilt)) fold-down is
+      // no longer needed (verified equivalent for genuine side-on footage
+      // where dz = 0).
       const dx = joints.hipMid.x - joints.shoulderMid.x;
       const dy = joints.hipMid.y - joints.shoulderMid.y;
-      const currentTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-      const normalizedTilt = Math.min(currentTilt, Math.abs(180 - currentTilt));
+      const dz = (joints.hipMid.z || 0) - (joints.shoulderMid.z || 0);
+      const horizontalDist = Math.hypot(dx, dz);
+      const normalizedTilt = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
 
       if (currentElbow === null) continue;
 
@@ -64,18 +69,12 @@ const score90DegreeHSPU = (function () {
       }
     }
 
-    // 🛠️ THE FIX: Instead of breaking the UI, pass a zero score and fault directly to the AI coach
+    // 🐛 FIX: was status:"ok"/score:0 with a fabricated fault — matched
+    // to the no_reps_detected convention used everywhere else.
     if (reps.length === 0) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "no_reps_completed",
-          severity: "major",
-          detail: "No complete reps detected. To trigger a rep, start in a vertical handstand, lower your body into a horizontal 90° hold, and press all the way back up to a straight vertical lockout."
-        }],
-        repCount: 0,
-        reps: []
+        status: "no_reps_detected",
+        message: "No complete reps detected. To trigger a rep, start in a vertical handstand, lower your body into a horizontal 90° hold, and press all the way back up to a straight vertical lockout.",
       };
     }
 

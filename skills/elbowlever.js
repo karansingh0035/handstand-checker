@@ -67,12 +67,20 @@ const scoreElbowLever = (function () {
   // body extends in frame (left-facing vs. right-facing side-on shots).
   // Positive = the far end (ankle) sits lower than the shoulder (sagging);
   // negative = the far end sits higher (piking/lifting).
+  //
+  // 🆕 Same fix as backlever.js/frontlever.js/90degreehold.js/pushup.js:
+  // dx alone only captures "horizontal" when filmed side-on. dz folded
+  // into the horizontal component via hypot makes this yaw-invariant;
+  // dy's sign is preserved (not abs'd) so the sag/lift direction this
+  // function reports stays intact.
   function tiltFromHorizontalDegrees(near, far) {
     if (!near || !far) return null;
     const dx = Math.abs(far.x - near.x);
+    const dz = Math.abs((far.z || 0) - (near.z || 0));
+    const horizontalDist = Math.hypot(dx, dz);
     const dy = far.y - near.y;
-    if (dx === 0 && dy === 0) return null;
-    return (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (horizontalDist === 0 && dy === 0) return null;
+    return (Math.atan2(dy, horizontalDist) * 180) / Math.PI;
   }
 
   // history: array of frames collected across the ENTIRE video, each frame

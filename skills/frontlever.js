@@ -56,10 +56,14 @@ const scoreFrontLever = (function () {
     }
 
     // 3️⃣ Horizontal Ground Alignment
+    // 🆕 Same fix as backlever.js/pushup.js: fold dz into the horizontal
+    // component for yaw-invariance; hypot() being non-negative also lets
+    // us drop the old fold-down trick.
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
-    const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    const tiltFromHorizontal = Math.min(rawTilt, Math.abs(180 - rawTilt));
+    const dz = (ankleMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
     if (tiltFromHorizontal > 15) {
       faults.push({
         id: "lever_not_parallel",
@@ -107,9 +111,11 @@ const validateFrontLeverVideo = (function () {
     const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
     const armsStraight = elbowAngle !== null && elbowAngle > 150;
 
+    // 🆕 Same fix as backlever.js/pushup.js
     const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
     const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
-    const isHorizontal = dx > dy;
+    const dz = Math.abs((joints.ankleMid.z || 0) - (joints.shoulderMid.z || 0));
+    const isHorizontal = Math.hypot(dx, dz) > dy;
 
     // Body hangs suspended below hands/grip
     const bodyBelowGrip = joints.shoulderMid.y > joints.wristMid.y;

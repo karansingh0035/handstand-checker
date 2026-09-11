@@ -166,9 +166,17 @@ const { scorePushup, validatePushupVideo } = (function () {
       if (!joints || !joints.shoulderMid || !joints.hipMid) continue;
       counted++;
 
+      // 🆕 Same fix as engine/primitives.js's torsoVertical: dx alone only
+      // captures "horizontal" when filmed side-on. Front-on/head-on framing
+      // (e.g. a laptop webcam facing the person) puts most of a real
+      // horizontal torso's extension into z, not x — folding dz into the
+      // horizontal component via hypot makes this yaw-invariant instead of
+      // side-on-only, same underlying camera-angle blind spot.
       const dx = Math.abs(joints.shoulderMid.x - joints.hipMid.x);
       const dy = Math.abs(joints.shoulderMid.y - joints.hipMid.y);
-      if (dx > dy) horizontalCount++;
+      const dz = Math.abs((joints.shoulderMid.z || 0) - (joints.hipMid.z || 0));
+      const horizontalDist = Math.hypot(dx, dz);
+      if (horizontalDist > dy) horizontalCount++;
     }
 
     return counted > 0 ? horizontalCount / counted : 0;

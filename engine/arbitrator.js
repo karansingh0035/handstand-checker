@@ -1,4 +1,5 @@
 // engine/arbitrator.js
+import { PRIORITY } from './rules.js';
 
 export class CueArbitrator {
   constructor(options = {}) {
@@ -10,9 +11,54 @@ export class CueArbitrator {
     this.cleanStreak = 0;
     this.cueLastFiredRep = new Map();
     this.violationHistory = new Map();
+
+    // 🆕 SAFETY ESCALATION — deliberately separate state from everything
+    // above. A "take a break" cue must never go silent just because the
+    // routine maxAudioCues budget got used up on unrelated form tips
+    // earlier in the session — that was the actual bug being fixed here.
+    // safetyStreakThreshold: consecutive reps with a SAFETY-tier violation
+    // (from rules.js's PRIORITY.SAFETY) required before escalating —
+    // mirrors cleanStreakThreshold's "requires repetition, not a one-off"
+    // pattern, just for the opposite case.
+    // maxSafetyCues: its own budget, independent of maxAudioCues, so a
+    // struggling user can still get warned even after routine cues are
+    // exhausted (and vice versa — safety escalating doesn't eat into the
+    // routine budget either).
+    this.safetyStreakThreshold = options.safetyStreakThreshold || 3;
+    this.maxSafetyCues = options.maxSafetyCues || 3;
+    this.safetyStreak = 0;
+    this.safetyCueCount = 0;
   }
 
   arbitrate(repNumber, violations = []) {
+    // 🆕 SAFETY ESCALATION — checked FIRST, before the routine
+    // maxAudioCues cap below, and using its own separate budget
+    // (maxSafetyCues) so it can never go silent just because routine form
+    // cues already used up the session's regular budget. Tracks
+    // consecutive reps containing a SAFETY-tier violation (evaluateRules()
+    // in rules.js already tags each violation with its priority tier, so
+    // no new detection logic is needed here — just watching for
+    // repetition of what's already flagged as SAFETY).
+    const hasSafetyViolation = violations.some((v) => v.priority === PRIORITY.SAFETY);
+    this.safetyStreak = hasSafetyViolation ? this.safetyStreak + 1 : 0;
+
+    if (this.safetyStreak >= this.safetyStreakThreshold && this.safetyCueCount < this.maxSafetyCues) {
+      this.safetyCueCount++;
+      // Reset immediately, requiring a fresh streak of violations before
+      // firing again — same "don't nag every single rep" reasoning as the
+      // debounce window below, just implemented as a streak reset instead
+      // since this cue isn't tied to one specific violation id.
+      this.safetyStreak = 0;
+      return {
+        id: 'safety_break',
+        cue: "Your form is breaking down — take a break.",
+        priority: PRIORITY.SAFETY,
+        isSafety: true,
+      };
+    }
+
+    // --- Everything below is the existing routine-cue logic, unchanged,
+    // with its own separate maxAudioCues budget. ---
     if (this.audioCueCount >= this.maxAudioCues) {
       return null;
     }
@@ -70,5 +116,8 @@ export class CueArbitrator {
     this.cleanStreak = 0;
     this.cueLastFiredRep.clear();
     this.violationHistory.clear();
+    // 🆕
+    this.safetyStreak = 0;
+    this.safetyCueCount = 0;
   }
 }

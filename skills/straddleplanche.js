@@ -7,17 +7,13 @@ const scoreStraddlePlanche = (function () {
 
   return function scoreStraddlePlanche(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(isFrameConfident);
-// Replace the old error return blocks at the top of your function with this:
+    // 🐛 FIX: was status:"ok"/score:0 with a fabricated fault — same bug
+    // as planchelean.js/pseudoplanchepushup.js/ninetydegreehspu.js.
+    // Fixed to match the low_confidence convention used everywhere else.
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "tracking_failed",
-          severity: "major",
-          detail: "Biomechanical landmarks missing. Make sure your camera is perfectly side-on to evaluate your straddle line."
-        }],
-        angles: { elbowAngle: 0, tiltFromHorizontal: 0, leanPixels: 0 }
+        status: "low_confidence",
+        message: "Biomechanical landmarks missing. Make sure your camera is perfectly side-on to evaluate your straddle line.",
       };
     }
 
@@ -48,7 +44,15 @@ const scoreStraddlePlanche = (function () {
     }
 
     // 2️⃣ Shoulder Lean Depth: Shoulders must be significantly forward of the wrists
-    const horizontalLean = Math.abs(shoulderMid.x - wristMid.x);
+    // 🆕 Same fix as pseudoplanchepushup.js's forwardLean: dx alone only
+    // captures forward lean when filmed side-on. dz folded in via hypot
+    // makes this yaw-invariant. Left as a raw pixel magnitude (not
+    // normalized by torso length), same pre-existing scale-invariance
+    // caveat as pseudoplanchepushup.js — not fixed here, out of scope for
+    // this pass.
+    const leanDx = shoulderMid.x - wristMid.x;
+    const leanDz = (shoulderMid.z || 0) - (wristMid.z || 0);
+    const horizontalLean = Math.hypot(leanDx, leanDz);
     if (horizontalLean < 35) {
       faults.push({
         id: "insufficient_lean",
@@ -58,10 +62,12 @@ const scoreStraddlePlanche = (function () {
     }
 
     // 3️⃣ Hip and Ground Parallel Alignment
+    // 🆕 Same fix as planche.js/backlever.js/frontlever.js/90degreehold.js
     const dx = hipMid.x - shoulderMid.x;
     const dy = hipMid.y - shoulderMid.y;
-    const lineTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    const tiltFromHorizontal = Math.min(lineTilt, Math.abs(180 - lineTilt));
+    const dz = (hipMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
     if (tiltFromHorizontal > 15) {
       faults.push({
         id: "hip_sag_or_pike",

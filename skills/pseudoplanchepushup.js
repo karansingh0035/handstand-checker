@@ -7,18 +7,13 @@ const scorePseudoPlanchePushup = (function () {
   return function scorePseudoPlanchePushup(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(f => isSideVisible(f, LEFT_SIDE_LANDMARKS) || isSideVisible(f, RIGHT_SIDE_LANDMARKS));
 
-    // 🛠️ FIX 1: Low visibility fallback
+    // 🐛 FIX: was status:"ok"/score:0 with a fabricated fault — same bug
+    // as planchelean.js/crowpose.js's pre-fix behavior. Fixed to match
+    // the low_confidence convention used everywhere else.
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "low_visibility",
-          severity: "major",
-          detail: "Set up the camera directly to your side. Your full body profile needs to be visible to track your forward lean."
-        }],
-        repCount: 0,
-        reps: []
+        status: "low_confidence",
+        message: "Set up the camera directly to your side. Your full body profile needs to be visible to track your forward lean.",
       };
     }
 
@@ -33,7 +28,16 @@ const scorePseudoPlanchePushup = (function () {
 
       const leftElbow = angleBetween(joints.leftWrist, joints.leftElbow, joints.leftShoulder);
       const rightElbow = averageValid([leftElbow, angleBetween(joints.rightWrist, joints.rightElbow, joints.rightShoulder)]);
-      const forwardLean = Math.abs(joints.shoulderMid.x - joints.wristMid.x);
+      // 🆕 Same fix as pushup.js/planchepushup.js: dx alone only captures
+      // forward lean when filmed side-on. dz folded in via hypot makes
+      // this yaw-invariant. Left as a raw pixel magnitude (not normalized
+      // by torso length) same as before — that's a separate,
+      // pre-existing scale-invariance issue (this value depends on
+      // filming distance), not fixed here to keep this change scoped to
+      // the camera-angle bug.
+      const dx = joints.shoulderMid.x - joints.wristMid.x;
+      const dz = (joints.shoulderMid.z || 0) - (joints.wristMid.z || 0);
+      const forwardLean = Math.hypot(dx, dz);
 
       if (rightElbow === null) continue;
 
@@ -54,18 +58,14 @@ const scorePseudoPlanchePushup = (function () {
       }
     }
 
-    // 🛠️ FIX 2: Zero reps fallback
+    // 🐛 FIX: was status:"ok"/score:0 with a fabricated fault — same bug
+    // as above. Every other file's zero-reps path uses
+    // status:"no_reps_detected" (see pushup.js/pikepushup.js/squat.js
+    // etc.) — matched here for the same reason.
     if (reps.length === 0) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "no_reps_completed",
-          severity: "major",
-          detail: "No complete push-up repetitions detected. Make sure you lower your chest fully near the ground and lock your arms out completely at the top of each rep."
-        }],
-        repCount: 0,
-        reps: []
+        status: "no_reps_detected",
+        message: "No complete push-up repetitions detected. Make sure you lower your chest fully near the ground and lock your arms out completely at the top of each rep.",
       };
     }
 

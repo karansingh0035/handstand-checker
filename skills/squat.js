@@ -57,14 +57,18 @@ const scoreSquat = (function () {
   }
 
   // Torso tilt from vertical, in degrees — 0° = perfectly upright.
-  // Identical formula to engine/primitives.js's torsoVertical(), just
-  // working in this file's pixel-space joints instead of MediaPipe's raw
-  // normalized coordinates.
+  // 🆕 Matches the FIXED formula now in engine/primitives.js's
+  // torsoVertical() — this file's original copy was made before that fix
+  // landed and had the same front-on-camera blind spot (dx alone only
+  // captures horizontal displacement when filmed side-on; folding dz in
+  // via hypot makes it yaw-invariant instead).
   function computeTorsoVertical(shoulderMid, hipMid) {
     if (!shoulderMid || !hipMid) return null;
     const dy = Math.abs(hipMid.y - shoulderMid.y);
     const dx = Math.abs(hipMid.x - shoulderMid.x);
-    const rad = Math.atan2(dx, dy);
+    const dz = Math.abs((hipMid.z || 0) - (shoulderMid.z || 0));
+    const horizontal = Math.hypot(dx, dz);
+    const rad = Math.atan2(horizontal, dy);
     return (rad * 180.0) / Math.PI;
   }
 

@@ -58,10 +58,12 @@ const scorePlanche = (function () {
     }
 
     // 3️⃣ Horizontal Ground Alignment: The body line should be parallel to the ground
+    // 🆕 Same fix as backlever.js/frontlever.js/90degreehold.js/pushup.js
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
-    const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    const tiltFromHorizontal = Math.min(rawTilt, Math.abs(180 - rawTilt));
+    const dz = (ankleMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
     if (tiltFromHorizontal > 15) {
       faults.push({
         id: "body_not_level",

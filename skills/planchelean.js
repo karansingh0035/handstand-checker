@@ -2,20 +2,20 @@
 const scorePlancheLean = (function () {
   const MIN_CONFIDENT_FRAMES = 15;
 
+  // 🐛 FIX: this used to return status:"ok" with a fabricated score:0 and
+  // a fake fault — meaning an untrackable video showed up as "you scored
+  // 0/100" instead of "we couldn't analyze this." Every other scoreFn in
+  // this codebase uses status:"low_confidence" here (see crowpose.js's
+  // own comment describing this exact fix), which is what tells
+  // runFinalFormScoring() to show a re-record message instead of a real
+  // score. Fixed to match that convention.
   return function scorePlancheLean(history, videoWidth, videoHeight) {
     const confidentFrames = history.filter(f => isSideVisible(f, LEFT_SIDE_LANDMARKS) || isSideVisible(f, RIGHT_SIDE_LANDMARKS));
 
-  // Replace the old error return blocks at the top of your function with this:
     if (confidentFrames.length < MIN_CONFIDENT_FRAMES) {
       return {
-        status: "ok",
-        score: 0,
-        faults: [{
-          id: "tracking_failed",
-          severity: "major",
-          detail: "Skeletal data incomplete. Ensure your position from toes to head remains visible in the frame."
-        }],
-        angles: { elbowAngle: 0, bodyLineAngle: 0, armLeanAngle: 0 }
+        status: "low_confidence",
+        message: "Skeletal data incomplete. Ensure your position from toes to head remains visible in the frame.",
       };
     }
 

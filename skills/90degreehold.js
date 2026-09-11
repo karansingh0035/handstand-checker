@@ -56,10 +56,12 @@ const score90DegreeHold = (function () {
     }
 
     // 3️⃣ Horizontal Ground Alignment
+    // 🆕 Same fix as backlever.js/frontlever.js/pushup.js
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
-    const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    const tiltFromHorizontal = Math.min(rawTilt, Math.abs(180 - rawTilt));
+    const dz = (ankleMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
     if (tiltFromHorizontal > 15) {
       faults.push({
         id: "body_not_level",
@@ -105,9 +107,11 @@ const validate90DegreeHoldVideo = (function () {
     const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
     if (elbowAngle === null || elbowAngle < 50 || elbowAngle > 130) return false;
 
+    // 🆕 Same fix as backlever.js/frontlever.js/pushup.js
     const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
     const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
-    return dx > dy;
+    const dz = Math.abs((joints.ankleMid.z || 0) - (joints.shoulderMid.z || 0));
+    return Math.hypot(dx, dz) > dy;
   }
 
   return function validate90DegreeHoldVideo(history, videoWidth, videoHeight) {

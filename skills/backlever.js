@@ -53,10 +53,19 @@ const scoreBackLever = (function () {
     }
 
     // 3️⃣ Horizontal Ground Alignment
+    // 🆕 Same fix as engine/primitives.js's torsoVertical / pushup.js's
+    // computeHorizontalRatio: dx alone only captures "horizontal" when
+    // filmed side-on. Folding dz into the horizontal component via hypot
+    // makes this yaw-invariant. Bonus: since hypot() is always >= 0,
+    // atan2 now naturally stays within (-90°,90°), so the old
+    // Math.min(rawTilt, Math.abs(180 - rawTilt)) fold-down is no longer
+    // needed — this is a straight simplification, not a behavior change
+    // for genuinely side-on footage.
     const dx = ankleMid.x - shoulderMid.x;
     const dy = ankleMid.y - shoulderMid.y;
-    const rawTilt = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
-    const tiltFromHorizontal = Math.min(rawTilt, Math.abs(180 - rawTilt));
+    const dz = (ankleMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
     if (tiltFromHorizontal > 15) {
       faults.push({
         id: "lever_not_parallel",
@@ -102,9 +111,12 @@ const validateBackLeverVideo = (function () {
     const elbowAngle = angleBetween(joints.wristMid, joints.elbowMid, joints.shoulderMid);
     const armsStraight = elbowAngle !== null && elbowAngle > 155;
 
+    // 🆕 Same fix as pushup.js's computeHorizontalRatio: fold dz into the
+    // horizontal component so this isn't side-on-only.
     const dx = Math.abs(joints.ankleMid.x - joints.shoulderMid.x);
     const dy = Math.abs(joints.ankleMid.y - joints.shoulderMid.y);
-    const isHorizontal = dx > dy;
+    const dz = Math.abs((joints.ankleMid.z || 0) - (joints.shoulderMid.z || 0));
+    const isHorizontal = Math.hypot(dx, dz) > dy;
     const bodyBelowGrip = joints.shoulderMid.y > joints.wristMid.y;
 
     return armsStraight && isHorizontal && bodyBelowGrip;

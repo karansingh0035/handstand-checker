@@ -7,10 +7,34 @@ export function angle(a, b, c) {
   return deg;
 }
 
+/**
+ * 🆕 Torso angle from vertical, made camera-yaw-invariant by folding in
+ * MediaPipe's z (rough depth, same scale as x, hip-relative).
+ *
+ * The original version only used the image-plane x/y — that's fine when
+ * filmed side-on, but breaks for front-on / head-on framing (e.g. a phone
+ * propped up facing the person doing a pushup): a real horizontal torso's
+ * extension shows up mostly as a z difference in that framing, which the
+ * old 2D-only math was blind to, so it read as much closer to vertical
+ * than the person actually was and incorrectly failed plausibility checks
+ * (see PLAUSIBILITY_CHECKS.pushup in index.js).
+ *
+ * Folding dz into the horizontal component alongside dx makes the angle
+ * invariant to which way the subject faces the camera (yaw rotation about
+ * their vertical axis), while dy still carries verticality — this assumes
+ * the camera itself isn't rolled/tilted sideways, which holds for normal
+ * phone-propped-up filming.
+ *
+ * Caveat: MediaPipe's z is noisier and less validated than x/y, so this
+ * needs real-clip testing across filming angles, same as the muscleup
+ * hysteresis numbers in index.js.
+ */
 export function torsoVertical(shoulder, hip) {
   const dy = Math.abs(hip.y - shoulder.y);
   const dx = Math.abs(hip.x - shoulder.x);
-  const rad = Math.atan2(dx, dy);
+  const dz = Math.abs((hip.z || 0) - (shoulder.z || 0));
+  const horizontal = Math.hypot(dx, dz);
+  const rad = Math.atan2(horizontal, dy);
   return (rad * 180.0) / Math.PI;
 }
 

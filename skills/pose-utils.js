@@ -54,7 +54,11 @@ const distanceBetween = distance; // Alias for backward compatibility
 
 function midpoint(a, b) {
   if (!a || !b) return null;
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // 🆕 z averaged alongside x/y when present, so joints derived from
+  // midpoint() (e.g. shoulderMid/hipMid) still carry depth through.
+  // Falls back cleanly when z is absent (undefined + undefined = NaN is
+  // avoided via the || 0 default) so existing 2D-only call sites are unaffected.
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: ((a.z || 0) + (b.z || 0)) / 2 };
 }
 
 function averageValid(values) {
@@ -76,7 +80,14 @@ function median(values) {
 
 function toPixelSpace(point, videoWidth, videoHeight) {
   if (!point) return null;
-  return { x: point.x * videoWidth, y: point.y * videoHeight };
+  // 🆕 z carried through alongside x/y — MediaPipe's z is roughly the same
+  // normalized scale as x (not per-axis like x vs y), so it's scaled by
+  // videoWidth to land in the same pixel-space units as x/y here. Needed
+  // for camera-angle-invariant checks downstream (e.g. pushup.js's
+  // computeHorizontalRatio) the same way engine/primitives.js's
+  // torsoVertical now uses z. Existing callers that only read x/y are
+  // unaffected.
+  return { x: point.x * videoWidth, y: point.y * videoHeight, z: (point.z || 0) * videoWidth };
 }
 
 function medianLandmark(frames, index) {
@@ -197,11 +208,22 @@ function validateVideoQuality(frames) {
     };
   }
 
+  // 🆕 Was: averaging visibility across ALL ~33 landmarks (face, both
+  // feet's toe/heel points included) and requiring that whole-body
+  // average >= 0.5 for 70% of frames. That's stricter than what scoring
+  // actually needs and fails legitimate footage where the camera simply
+  // doesn't frame the face or exact toe tips (e.g. a laptop webcam with a
+  // tight FOV cropping feet, or looking down/away from the lens) even
+  // though every landmark that matters (shoulders/elbows/wrists/hips/
+  // knees/ankles) is tracked fine.
+  //
+  // Now: reuses isSideVisible/LEFT_SIDE_LANDMARKS/RIGHT_SIDE_LANDMARKS —
+  // the same "one full side visible" bar pushup.js's isFrameConfident
+  // already applies — so this global gate stops being stricter than the
+  // skill-specific checks that run after it.
   const usable = frames.filter((frame) => {
     if (!frame || frame.length === 0) return false;
-    const visibilities = frame.map((lm) => (lm && lm.visibility !== undefined ? lm.visibility : 0));
-    const avgVisibility = visibilities.reduce((a, b) => a + b, 0) / visibilities.length;
-    return avgVisibility >= MIN_VISIBILITY;
+    return isSideVisible(frame, LEFT_SIDE_LANDMARKS) || isSideVisible(frame, RIGHT_SIDE_LANDMARKS);
   });
 
   const ratio = usable.length / Math.max(total, 1);
@@ -211,7 +233,7 @@ function validateVideoQuality(frames) {
       valid: false,
       confidence: ratio,
       message:
-        "We could not detect a person clearly enough throughout this video. Use good lighting, keep your full body in frame, and make sure only one person is visible.",
+        "We could not detect a person clearly enough throughout this video. Use good lighting, keep at least one full side of your body (shoulder to ankle) in frame, and make sure only one person is visible.",
     };
   }
 

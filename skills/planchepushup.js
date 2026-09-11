@@ -60,19 +60,45 @@ const scorePlanchePushup = (function () {
 
   // Forward shoulder protraction past the wrist, normalized by torso length
   // (shoulder-to-hip distance) so the ratio stays comparable regardless of
-  // filming distance — mirrors engine/primitives.js's shoulderLean() exactly,
-  // just working in this file's pixel-space joints instead of MediaPipe's
-  // raw normalized coordinates.
+  // filming distance.
+  //
+  // 🆕 Was x-only (raw x-subtraction + a Math.sign facingDirection trick),
+  // same category of camera-angle blind spot as torsoVertical/
+  // computeHorizontalRatio: for a horizontal-body skill like this one, the
+  // shoulder-hip-wrist line IS the ambiguous axis, and "forward" can live
+  // in z as much as x depending on camera yaw. The old sign trick also got
+  // numerically unstable right when it mattered most — front-on framing is
+  // exactly when hip.x - wrist.x shrinks toward zero even with real
+  // separation in z.
+  //
+  // Now: treated as a proper horizontal-plane (x,z) vector projection.
+  // hips and shoulders move forward together in a real lean (same
+  // assumption as before), so the wrist->hip vector in the horizontal
+  // plane defines "forward" as a direction rather than a sign; the
+  // wrist->shoulder vector is projected onto it via dot product. This is
+  // yaw-invariant instead of just flipping which side of a 1D line you're on.
+  // torsoLength is folded into z too, for the same reason — the
+  // shoulder-hip line is on the same ambiguous horizontal axis here, not
+  // gravity-vertical, so it needs the same treatment torsoVertical got.
   //   0    = shoulders directly above wrists
   //   >0   = shoulders leaning forward past the wrists (toward planche)
   //   <0   = shoulders leaning back behind the wrists
   function computeShoulderLean(joints) {
     if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) return null;
 
-    const facingDirection = Math.sign(joints.hipMid.x - joints.wristMid.x) || 1;
-    const rawLean = (joints.shoulderMid.x - joints.wristMid.x) * facingDirection;
+    const dirX = joints.hipMid.x - joints.wristMid.x;
+    const dirZ = (joints.hipMid.z || 0) - (joints.wristMid.z || 0);
+    const dirMag = Math.hypot(dirX, dirZ) || 1e-6;
 
-    const torsoLength = distanceBetween(joints.hipMid, joints.shoulderMid) || 1e-6;
+    const shoulderX = joints.shoulderMid.x - joints.wristMid.x;
+    const shoulderZ = (joints.shoulderMid.z || 0) - (joints.wristMid.z || 0);
+    const rawLean = (shoulderX * dirX + shoulderZ * dirZ) / dirMag;
+
+    const torsoLength = Math.hypot(
+      joints.hipMid.x - joints.shoulderMid.x,
+      joints.hipMid.y - joints.shoulderMid.y,
+      (joints.hipMid.z || 0) - (joints.shoulderMid.z || 0)
+    ) || 1e-6;
     return rawLean / torsoLength;
   }
 
