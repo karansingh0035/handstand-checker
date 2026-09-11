@@ -6,11 +6,23 @@ import { CueArbitrator } from './arbitrator.js';
 import { ProgressionManager } from './progression.js';
 import { angle, torsoVertical, bodyLine, shoulderLean, verticalProgress } from './primitives.js';
 
+// engine/index.js (Top level)
+let isSpeaking = false;
+
 export function speakCue(text) {
   if (!('speechSynthesis' in window) || !text) return;
+  
+  // Stale voice queue immediately flush karo
   window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.1;
+  utterance.rate = 1.25; // 1.25x speed fast feedback delivery ke liye
+  utterance.pitch = 1.0;
+
+  utterance.onend = () => { isSpeaking = false; };
+  utterance.onerror = () => { isSpeaking = false; };
+
+  isSpeaking = true;
   window.speechSynthesis.speak(utterance);
 }
 

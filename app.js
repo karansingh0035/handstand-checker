@@ -368,12 +368,14 @@ function startVideoProcessingLoop() {
 // canvas sizing / MediaPipe init / loop-start logic instead of duplicating
 // it. Assumes processingVideoElement.videoWidth/videoHeight are already
 // valid (i.e. this only gets called from an onloadeddata handler).
+// app.js mein beginFrameProcessing() replace karo:
 function beginFrameProcessing() {
   const nativeWidth = processingVideoElement.videoWidth;
   const nativeHeight = processingVideoElement.videoHeight;
 
-  const MAX_CANVAS_WIDTH = 640;
-  const MAX_CANVAS_HEIGHT = 640;
+  // Downscale canvas to 400px max for instant 60fps real-time inference on mobile
+  const MAX_CANVAS_WIDTH = 400;
+  const MAX_CANVAS_HEIGHT = 400;
 
   const scale = Math.min(
     1,
