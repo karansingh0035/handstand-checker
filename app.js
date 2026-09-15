@@ -56,6 +56,8 @@ let pendingSkillKey = null;
 let currentVisualCue = null;
 let visualCueTimer = null;
 
+const MAX_LIVE_LANDMARK_HISTORY = 1800; // Bug #5 Fix: Limit memory during long live streams
+
 const liveSession = new LiveSessionController({
   onStateChange: syncLiveChrome
 });
@@ -202,6 +204,12 @@ function onPoseResults(results) {
 
   if (results.poseLandmarks) {
     landmarkHistory.push(results.poseLandmarks);
+
+    // Bug #5 Fix: Prevent memory leak during long live streams
+    if (isLiveSessionMode && landmarkHistory.length > MAX_LIVE_LANDMARK_HISTORY) {
+      landmarkHistory.shift();
+    }
+
     let displayLandmarks = results.poseLandmarks;
 
     if (isLiveEngineEnabled) {
@@ -251,6 +259,7 @@ function onPoseResults(results) {
   }
 }
 
+// Bug #9 Fix: Safe roundRect polyfill fallback
 function drawCueOverlay(canvasCtx, text) {
   const padding = 16;
   canvasCtx.font = 'bold 20px sans-serif';
@@ -260,7 +269,8 @@ function drawCueOverlay(canvasCtx, text) {
   const y = 50;
 
   canvasCtx.fillStyle = 'rgba(255, 90, 31, 0.9)';
-  if (canvasCtx.roundRect) {
+  
+  if (typeof canvasCtx.roundRect === 'function') {
     canvasCtx.beginPath();
     canvasCtx.roundRect(x - padding, y - 28, textWidth + (padding * 2), 40, 8);
     canvasCtx.fill();
@@ -519,7 +529,6 @@ function prepareLiveSession() {
   isLiveSessionMode = true;
   dashboardRow.style.display = "none";
 
-  // Resolve against the full SKILL_ANALYZERS / SKILLS list instead of restricting to live-only
   const skillConfig = resolveSkill(skillInput.value);
   
   if (!skillConfig) {
@@ -535,13 +544,13 @@ function prepareLiveSession() {
   activeSkillConfig = skillConfig;
   isLiveEngineEnabled = true;
 
-  // Map to the live engine key if available, or default to the base skill key
   const engineKey = LIVE_ENGINE_SKILL_MAP[skillConfig.key] || skillConfig.key;
   engine.setMovement(engineKey);
 
   resetSessionVisuals();
   return skillConfig;
 } 
+
 function formatSessionClock(ms) {
   const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
@@ -560,11 +569,14 @@ function updateLiveCounter(frameResult) {
   }
 }
 
+// Bug #6 Fix: Null guard fallback for skills missing in SKILLS
 function syncLiveChrome(state = {}) {
   if (!liveToolbar) return;
-  const skill = SKILLS[state.currentSkill] || SKILLS[liveSession.currentSkill];
+  const currentKey = state.currentSkill || liveSession.currentSkill;
+  const skill = SKILLS[currentKey] || SKILL_ANALYZERS[currentKey] || activeSkillConfig;
+  
   if (currentSkillBadge && skill) {
-    currentSkillBadge.textContent = skill.label;
+    currentSkillBadge.textContent = skill.label || currentKey;
   }
   if (sessionTimerEl) {
     sessionTimerEl.textContent = formatSessionClock(liveSession.getElapsedMs());
@@ -610,7 +622,6 @@ function hideLiveChrome() {
 function populateSkillSwitcher() {
   if (!skillSwitcherList) return;
 
-  // Use SKILL_ANALYZERS so all 20+ skills populate into the modal list
   skillSwitcherList.innerHTML = Object.entries(SKILL_ANALYZERS).map(([key, skill]) => {
     const isHold = key.includes("hold") || key.includes("sit") || key.includes("stand") || key.includes("lever") || key.includes("planche") || key.includes("pose");
     const activeKey = liveSession.currentSkill || activeSkillConfig?.key;
@@ -644,11 +655,9 @@ function applySkillSwitch(nextSkillKey) {
     return;
   }
 
-  // Update movement key for engine
   const engineKey = LIVE_ENGINE_SKILL_MAP[nextSkillKey] || nextSkillKey;
   engine.setMovement(engineKey);
 
-  // Sync state
   liveSession.currentSkill = nextSkillKey;
   activeSkillConfig = resolveSkill(nextSkillKey) || { key: nextSkillKey, label: nextConfig.label };
 
@@ -762,17 +771,15 @@ goLiveBtn.addEventListener("click", async () => {
 
   liveStream = stream;
 
-  // 1. Force the current skill property before starting session segments
+  // Force skill properties prior to tracking
   liveSession.currentSkill = skillConfig.key;
 
-  // 2. Start the session controller
   try {
     liveSession.start(skillConfig.key);
   } catch (e) {
     console.warn("LiveSessionController fallback intercepted:", e);
   }
 
-  // 3. Guarantee active segment matches current selected skill label
   if (liveSession.activeSegment) {
     liveSession.activeSegment.skillKey = skillConfig.key;
     liveSession.activeSegment.skillLabel = skillConfig.label;
