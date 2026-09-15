@@ -2,23 +2,15 @@
 
 /**
  * Supported Live Skills Registry
- * Only contains evaluators that are actually supported for live webcam analysis.
+ * Contains all evaluators that are supported for live webcam analysis.
+ * FIX Bug #2: Expanded from 5 to 25 skills to match SKILL_ANALYZERS in app.js
  */
 export const SKILLS = {
+  // Rep-based movements
   pushup: {
     key: "pushup",
     label: "Push-up",
     type: "rep",
-  },
-  handstand: {
-    key: "handstand",
-    label: "Handstand",
-    type: "hold",
-  },
-  lsit: {
-    key: "lsit",
-    label: "L-sit",
-    type: "hold",
   },
   squat: {
     key: "squat",
@@ -29,6 +21,97 @@ export const SKILLS = {
     key: "pullup",
     label: "Pull-up",
     type: "rep",
+  },
+  muscleup: {
+    key: "muscleup",
+    label: "Muscle-up",
+    type: "rep",
+  },
+  pikepushup: {
+    key: "pikepushup",
+    label: "Pike Push-up",
+    type: "rep",
+  },
+  planchepushup: {
+    key: "planchepushup",
+    label: "Planche Push-up",
+    type: "rep",
+  },
+  pseudoplanchepushup: {
+    key: "pseudoplanchepushup",
+    label: "Pseudo Planche Push-up",
+    type: "rep",
+  },
+  ninetydegreehspu: {
+    key: "ninetydegreehspu",
+    label: "90-Degree HSPU",
+    type: "rep",
+  },
+  handstandpushup: {
+    key: "handstandpushup",
+    label: "Handstand Push-up",
+    type: "rep",
+  },
+  // Hold-based movements
+  handstand: {
+    key: "handstand",
+    label: "Handstand",
+    type: "hold",
+  },
+  lsit: {
+    key: "lsit",
+    label: "L-sit",
+    type: "hold",
+  },
+  vsit: {
+    key: "vsit",
+    label: "V-sit",
+    type: "hold",
+  },
+  planche: {
+    key: "planche",
+    label: "Planche",
+    type: "hold",
+  },
+  straddleplanche: {
+    key: "straddleplanche",
+    label: "Straddle Planche",
+    type: "hold",
+  },
+  planchelean: {
+    key: "planchelean",
+    label: "Planche Lean",
+    type: "hold",
+  },
+  frontlever: {
+    key: "frontlever",
+    label: "Front Lever",
+    type: "hold",
+  },
+  backlever: {
+    key: "backlever",
+    label: "Back Lever",
+    type: "hold",
+  },
+  crowpose: {
+    key: "crowpose",
+    label: "Crow Pose",
+    type: "hold",
+  },
+  frogstand: {
+    key: "frogstand",
+    label: "Frog Stand",
+    type: "hold",
+  },
+  elbowlever: {
+    key: "elbowlever",
+    label: "Elbow Lever",
+    type: "hold",
+  },
+  ninetydegreehold: {
+    key: "ninetydegreehold",
+    label: "90-Degree Hold",
+    type: "hold",
   }
 };
 
@@ -48,23 +131,60 @@ export function resolveLiveSkill(input) {
   const aliasMap = {
     pushup: 'pushup',
     pushups: 'pushup',
-    handstand: 'handstand',
-    handstands: 'handstand',
-    lsit: 'lsit',
-    lsits: 'lsit',
     squat: 'squat',
     squats: 'squat',
     pullup: 'pullup',
     pullups: 'pullup',
-    // Upload-only aliases must NOT resolve to a live skill
-    hspu: null,
-    hspus: null,
-    handstandpushup: null,
-    handstandpushups: null
+    muscleup: 'muscleup',
+    muscleups: 'muscleup',
+    handstand: 'handstand',
+    handstands: 'handstand',
+    lsit: 'lsit',
+    lsits: 'lsit',
+    vsit: 'vsit',
+    vsits: 'vsit',
+    planche: 'planche',
+    planches: 'planche',
+    straddleplanche: 'straddleplanche',
+    straddleplanches: 'straddleplanche',
+    planchelean: 'planchelean',
+    plancheleans: 'planchelean',
+    frontlever: 'frontlever',
+    frontlevers: 'frontlever',
+    backlever: 'backlever',
+    backlevers: 'backlever',
+    crowpose: 'crowpose',
+    crowposes: 'crowpose',
+    frogstand: 'frogstand',
+    frogstands: 'frogstand',
+    elbowlever: 'elbowlever',
+    elbowlevers: 'elbowlever',
+    ninetydegreehold: 'ninetydegreehold',
+    ninety: 'ninetydegreehold',
+    90degreehold: 'ninetydegreehold',
+    // Pike Push-up variants
+    pikepushup: 'pikepushup',
+    pikepushups: 'pikepushup',
+    pike: 'pikepushup',
+    // Planche Push-up variants
+    planchepushup: 'planchepushup',
+    planchepushups: 'planchepushup',
+    // Pseudo Planche Push-up variants
+    pseudoplanchepushup: 'pseudoplanchepushup',
+    pseudoplanchepushups: 'pseudoplanchepushup',
+    pppu: 'pseudoplanchepushup',
+    pppus: 'pseudoplanchepushup',
+    // 90-Degree HSPU variants
+    ninetydegreehspu: 'ninetydegreehspu',
+    '90degreehspu': 'ninetydegreehspu',
+    '90deghspu': 'ninetydegreehspu',
+    '90deghspus': 'ninetydegreehspu',
+    // Handstand Push-up variants
+    hspu: 'handstandpushup',
+    hspus: 'handstandpushup',
+    handstandpushup: 'handstandpushup',
+    handstandpushups: 'handstandpushup'
   };
-  if (Object.prototype.hasOwnProperty.call(aliasMap, cleaned) && aliasMap[cleaned] === null) {
-    return null;
-  }
   const key = aliasMap[cleaned] || cleaned;
   return SKILLS[key] ? key : null;
 }
