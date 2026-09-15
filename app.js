@@ -1,5 +1,9 @@
 // app.js
+<<<<<<< Updated upstream
 import { TrueFormEngine } from './engine/index.js';
+=======
+import { TrueFormEngine, warmUpSpeech, LiveSessionController, getSupportedLiveSkills, resolveLiveSkill, SKILLS, setAudioMuted } from './engine/index.js';
+>>>>>>> Stashed changes
 
 // 1️⃣ DOM INTERFACE ELEMENTS & TARGET HANDLES
 const plusBtn = document.getElementById("plus");
@@ -8,6 +12,20 @@ const uploadBtn = document.getElementById("upload");
 const skillInput = document.getElementById("skill-input");
 const goLiveBtn = document.getElementById("go-live");
 const stopLiveBtn = document.getElementById("stop-live");
+const liveToolbar = document.getElementById("live-toolbar");
+const sessionTimerEl = document.getElementById("session-timer");
+const currentSkillBadge = document.getElementById("current-skill-badge");
+const pauseLiveBtn = document.getElementById("pause-live-btn");
+const muteLiveBtn = document.getElementById("mute-live-btn");
+const changeSkillBtn = document.getElementById("change-skill-btn");
+const pauseOverlay = document.getElementById("pause-overlay");
+const skillSwitcherModal = document.getElementById("skill-switcher-modal");
+const skillSwitcherList = document.getElementById("skill-switcher-list");
+const cancelSkillSwitchBtn = document.getElementById("cancel-skill-switch");
+const confirmSkillSwitchBtn = document.getElementById("confirm-skill-switch");
+const sessionReportModal = document.getElementById("session-report-modal");
+const sessionReportBody = document.getElementById("session-report-body");
+const closeSessionReportBtn = document.getElementById("close-session-report");
 
 const previewContainer = document.querySelector(".preview-container");
 const previewVideo = document.getElementById("preview-video");
@@ -45,6 +63,12 @@ let isSessionActive = false;
 // (releasing the camera) when a live session ends. Null during an
 // uploaded-video session.
 let liveStream = null;
+let liveTimerInterval = null;
+let pendingSkillKey = null;
+
+const liveSession = new LiveSessionController({
+  onStateChange: syncLiveChrome
+});
 
 // Maps resolved skill keys to corresponding TrueFormEngine movement keys.
 // Dynamic rep-based exercises trigger live cues; static holds/levers bypass live processing.
@@ -61,6 +85,8 @@ const LIVE_ENGINE_SKILL_MAP = {
   "squat": "squat",
   "pikepushup": "pikepushup",
   "muscleup": "muscleup",
+  "lsit": "lsit",
+  "handstand": "handstand",
 };
 const SKILL_ANALYZERS = {
   "handstand": { validateFn: validateHandstandVideo, scoreFn: scoreHandstand, label: "Handstand" },
@@ -188,19 +214,37 @@ function onPoseResults(results) {
     let displayLandmarks = results.poseLandmarks;
 
     if (isLiveEngineEnabled) {
-      // 1. Process frame with live engine
-      const frameResult = engine.processFrame(results.poseLandmarks);
-      displayLandmarks = frameResult.landmarks;
+      if (liveSession.isActive && liveSession.isPaused) {
+        if (pauseOverlay) pauseOverlay.hidden = false;
+      } else {
+        if (pauseOverlay) pauseOverlay.hidden = true;
 
-      // 2. Update live rep counter
-      const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
-      if (repDisplay) {
-        repDisplay.innerText = frameResult.repCount;
-      }
+        const frameResult = engine.processFrame(results.poseLandmarks);
+        displayLandmarks = frameResult.landmarks || displayLandmarks;
 
+<<<<<<< Updated upstream
       // 3. Draw visual coaching cue pill on canvas
       if (frameResult.activeCue) {
         drawCueOverlay(ctx, frameResult.activeCue.cue);
+=======
+        if (liveSession.isActive) {
+          liveSession.ingestFrame(frameResult);
+        }
+
+        updateLiveCounter(frameResult);
+
+        if (frameResult.activeCue) {
+          currentVisualCue = frameResult.activeCue.cue;
+          if (visualCueTimer) clearTimeout(visualCueTimer);
+          visualCueTimer = setTimeout(() => {
+            currentVisualCue = null;
+          }, 2500);
+        }
+
+        if (currentVisualCue) {
+          drawCueOverlay(ctx, currentVisualCue);
+        }
+>>>>>>> Stashed changes
       }
     } else {
       // Bypassed for static holds/levers — clear or hide rep counters
@@ -469,6 +513,17 @@ removeBtn.addEventListener("click", () => {
 // skill, wires up the engine (or not, for static holds), and resets
 // per-session state. Returns the resolved skillConfig, or null if
 // resolution failed (an alert has already been shown in that case).
+function resetSessionVisuals() {
+  landmarkHistory = [];
+  analysisFinalized = false;
+  formScoreValue.textContent = "--";
+  currentVisualCue = null;
+  if (visualCueTimer) {
+    clearTimeout(visualCueTimer);
+    visualCueTimer = null;
+  }
+}
+
 function prepareSession() {
   const skillConfig = resolveSkill(skillInput.value);
   if (!skillConfig) {
@@ -491,11 +546,189 @@ function prepareSession() {
     isLiveEngineEnabled = false;
   }
 
+<<<<<<< Updated upstream
   landmarkHistory = [];
   analysisFinalized = false;
   formScoreValue.textContent = "--";
-
+=======
+  resetSessionVisuals();
   return skillConfig;
+}
+
+function prepareLiveSession() {
+  const liveKey = resolveLiveSkill(skillInput.value);
+  if (!liveKey) {
+    const supportedList = getSupportedLiveSkills().map((s) => s.label).join(", ");
+    alert(
+      skillInput.value.trim()
+        ? `"${skillInput.value.trim()}" isn't available in live mode yet. Live skills: ${supportedList}.`
+        : `Please type a live skill first. Live skills: ${supportedList}.`
+    );
+    return null;
+  }
+>>>>>>> Stashed changes
+
+  const skillConfig = resolveSkill(liveKey) || { key: liveKey, label: SKILLS[liveKey].label };
+  activeSkillConfig = skillConfig;
+  isLiveEngineEnabled = true;
+  engine.setMovement(liveKey);
+  resetSessionVisuals();
+  return skillConfig;
+}
+
+function formatSessionClock(ms) {
+  const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function updateLiveCounter(frameResult) {
+  const repDisplay = document.getElementById("rep-count") || document.getElementById("repCount");
+  if (!repDisplay || !frameResult) return;
+  if (frameResult.type === "hold") {
+    repDisplay.innerText = `${((frameResult.holdTimeMs || 0) / 1000).toFixed(1)}s`;
+  } else {
+    const reps = typeof frameResult.reps === "number" ? frameResult.reps : frameResult.repCount;
+    repDisplay.innerText = reps ?? 0;
+  }
+}
+
+function syncLiveChrome(state = {}) {
+  if (!liveToolbar) return;
+  const skill = SKILLS[state.currentSkill] || SKILLS[liveSession.currentSkill];
+  if (currentSkillBadge && skill) {
+    currentSkillBadge.textContent = skill.label;
+  }
+  if (sessionTimerEl) {
+    sessionTimerEl.textContent = formatSessionClock(liveSession.getElapsedMs());
+  }
+  if (pauseOverlay) {
+    pauseOverlay.hidden = !state.isPaused;
+  }
+  if (pauseLiveBtn) {
+    pauseLiveBtn.setAttribute("aria-label", state.isPaused ? "Resume live session" : "Pause live session");
+  }
+  if (muteLiveBtn) {
+    muteLiveBtn.setAttribute("aria-label", state.audioEnabled ? "Mute audio cues" : "Unmute audio cues");
+  }
+}
+
+function startLiveTimer() {
+  stopLiveTimer();
+  liveTimerInterval = setInterval(() => {
+    if (sessionTimerEl && liveSession.isActive) {
+      sessionTimerEl.textContent = formatSessionClock(liveSession.getElapsedMs());
+    }
+  }, 250);
+}
+
+function stopLiveTimer() {
+  if (liveTimerInterval) {
+    clearInterval(liveTimerInterval);
+    liveTimerInterval = null;
+  }
+}
+
+function showLiveChrome() {
+  if (liveToolbar) liveToolbar.hidden = false;
+  if (pauseOverlay) pauseOverlay.hidden = true;
+}
+
+function hideLiveChrome() {
+  if (liveToolbar) liveToolbar.hidden = true;
+  if (pauseOverlay) pauseOverlay.hidden = true;
+  stopLiveTimer();
+}
+
+function populateSkillSwitcher() {
+  if (!skillSwitcherList) return;
+  skillSwitcherList.innerHTML = getSupportedLiveSkills().map((skill) => `
+    <label class="skill-option">
+      <input type="radio" name="live-skill" value="${skill.key}" ${skill.key === liveSession.currentSkill ? "checked" : ""} />
+      <span class="skill-option-copy">
+        <strong>${skill.label}</strong>
+        <span>${skill.type === "hold" ? "Hold" : "Reps"}</span>
+      </span>
+    </label>
+  `).join("");
+}
+
+function openSkillSwitcher() {
+  pendingSkillKey = liveSession.currentSkill;
+  populateSkillSwitcher();
+  skillSwitcherModal.hidden = false;
+}
+
+function closeSkillSwitcher() {
+  skillSwitcherModal.hidden = true;
+}
+
+function applySkillSwitch(nextSkillKey) {
+  const result = liveSession.changeSkill(nextSkillKey);
+  if (!result || result.error) {
+    alert(result?.error || "Could not switch skill.");
+    return;
+  }
+  if (result.unchanged) {
+    closeSkillSwitcher();
+    return;
+  }
+
+  engine.setMovement(result.nextSkill);
+  currentVisualCue = null;
+  const nextConfig = SKILLS[result.nextSkill];
+  activeSkillConfig = resolveSkill(result.nextSkill) || { key: result.nextSkill, label: nextConfig.label };
+  coachingAdvice.textContent = `Coaching your ${nextConfig.label.toLowerCase()} live...`;
+  updateLiveCounter({
+    type: nextConfig.type,
+    reps: 0,
+    holdTimeMs: 0
+  });
+  closeSkillSwitcher();
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderSessionReport(report) {
+  if (!sessionReportBody || !report) return;
+  const segmentsHtml = (report.segmentSummaries || []).map((segment) => `
+    <article class="report-segment">
+      <h3>${escapeHtml(segment.skill)}</h3>
+      <p>${escapeHtml(segment.primaryStat)}</p>
+      <p>Average confidence: ${escapeHtml(segment.confidence)}</p>
+      <p>Main issue: ${escapeHtml(segment.mainIssue)}</p>
+    </article>
+  `).join("");
+
+  const focusHtml = (report.focusItems || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+
+  sessionReportBody.innerHTML = `
+    <div class="report-summary">
+      <p>Session duration: <strong>${escapeHtml(report.durationText)}</strong></p>
+      <p>Skills performed: <strong>${escapeHtml((report.skillsPerformed || []).join(", "))}</strong></p>
+    </div>
+    ${segmentsHtml}
+    <h3>Next focus</h3>
+    <ul class="report-focus">${focusHtml}</ul>
+  `;
+  sessionReportModal.hidden = false;
+}
+
+function resetToHome() {
+  sessionReportModal.hidden = true;
+  hideLiveChrome();
+  analysisWorkspace.style.display = "none";
+  mainTitle.style.display = "";
+  uploadBar.style.display = "";
+  coachingAdvice.textContent = "Awaiting video upload to run biomechanical analysis...";
+  formScoreValue.textContent = "--";
 }
 
 // 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
@@ -532,16 +765,19 @@ uploadBtn.addEventListener("click", () => {
 // instead of a picked file, and ended manually via a Stop button instead
 // of a natural "ended" event.
 goLiveBtn.addEventListener("click", async () => {
+<<<<<<< Updated upstream
   const skillConfig = prepareSession();
+=======
+  warmUpSpeech();
+
+  const skillConfig = prepareLiveSession();
+>>>>>>> Stashed changes
   if (!skillConfig) return;
 
   coachingAdvice.textContent = `Coaching your ${skillConfig.label.toLowerCase()} live...`;
 
   let stream;
   try {
-    // Rear camera by default — makes sense for propping up a phone and
-    // stepping back into frame. Falls back gracefully if unavailable
-    // (e.g. on a laptop with only a front-facing webcam).
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" },
       audio: false
@@ -553,11 +789,19 @@ goLiveBtn.addEventListener("click", async () => {
   }
 
   liveStream = stream;
+  liveSession.start(skillConfig.key);
+  setAudioMuted(!liveSession.audioEnabled);
+  showLiveChrome();
+  startLiveTimer();
+  updateLiveCounter({
+    type: SKILLS[skillConfig.key]?.type || "rep",
+    reps: 0,
+    holdTimeMs: 0
+  });
 
   mainTitle.style.display = "none";
   uploadBar.style.display = "none";
   analysisWorkspace.style.display = "flex";
-  stopLiveBtn.style.display = "inline-flex";
 
   processingVideoElement = document.createElement("video");
   processingVideoElement.muted = true;
@@ -569,16 +813,77 @@ goLiveBtn.addEventListener("click", async () => {
   };
 });
 
-stopLiveBtn.addEventListener("click", () => {
-  if (!isSessionActive) return; // already stopped, ignore extra clicks
-
-  isSessionActive = false;
-  stopLiveBtn.style.display = "none";
-
+function stopLiveCamera() {
   if (liveStream) {
     liveStream.getTracks().forEach((track) => track.stop());
     liveStream = null;
   }
+}
 
-  runFinalFormScoring();
+stopLiveBtn.addEventListener("click", () => {
+  if (!liveSession.isActive && !isSessionActive) return;
+
+  isSessionActive = false;
+<<<<<<< Updated upstream
+  stopLiveBtn.style.display = "none";
+=======
+  currentVisualCue = null;
+  if (visualCueTimer) {
+    clearTimeout(visualCueTimer);
+    visualCueTimer = null;
+  }
+>>>>>>> Stashed changes
+
+  const ended = liveSession.end();
+  stopLiveCamera();
+  hideLiveChrome();
+  setAudioMuted(false);
+
+  if (ended && ended.report) {
+    coachingAdvice.textContent = ended.report.textReport;
+    renderSessionReport(ended.report);
+  }
+});
+
+changeSkillBtn.addEventListener("click", () => {
+  if (!liveSession.isActive) return;
+  openSkillSwitcher();
+});
+
+cancelSkillSwitchBtn.addEventListener("click", () => {
+  closeSkillSwitcher();
+});
+
+confirmSkillSwitchBtn.addEventListener("click", () => {
+  const selected = skillSwitcherList.querySelector('input[name="live-skill"]:checked');
+  const nextKey = selected ? selected.value : pendingSkillKey;
+  applySkillSwitch(nextKey);
+});
+
+skillSwitcherList.addEventListener("change", (event) => {
+  if (event.target && event.target.name === "live-skill") {
+    pendingSkillKey = event.target.value;
+  }
+});
+
+pauseLiveBtn.addEventListener("click", () => {
+  if (!liveSession.isActive) return;
+  liveSession.togglePause();
+  if (liveSession.isPaused) {
+    setAudioMuted(true);
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  } else {
+    setAudioMuted(!liveSession.audioEnabled);
+  }
+});
+
+muteLiveBtn.addEventListener("click", () => {
+  const enabled = liveSession.toggleAudio();
+  setAudioMuted(!enabled);
+});
+
+closeSessionReportBtn.addEventListener("click", () => {
+  resetToHome();
 });

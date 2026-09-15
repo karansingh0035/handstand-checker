@@ -239,13 +239,101 @@ body::before {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
 }
 
+.live-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.live-toolbar[hidden],
+.pause-overlay[hidden],
+.modal-backdrop[hidden] {
+  display: none !important;
+}
+
+.live-toolbar-left,
+.live-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.session-timer-badge,
+.live-skill-badge,
+.live-counter-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.live-skill-badge {
+  color: #ff5a1f;
+}
+
+.live-tool-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.62);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.live-tool-btn:hover,
+.live-icon-btn:hover {
+  background-color: #ff5a1f;
+}
+
+.live-icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
 /* 🆕 Floating stop control for a live session — sits over the top-right
    corner of the camera feed, styled red/danger rather than the usual
    brand-orange icon-btn to make "this ends the session" unambiguous. */
 #stop-live {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+  position: static;
   z-index: 5;
   background-color: rgba(220, 38, 38, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -254,6 +342,138 @@ body::before {
 #stop-live:hover {
   background-color: #dc2626;
   box-shadow: 0 0 18px rgba(220, 38, 38, 0.55);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.modal-card {
+  width: min(520px, 100%);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid rgba(255, 90, 31, 0.28);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.modal-card h2 {
+  font-size: 1.35rem;
+  margin-bottom: 8px;
+}
+
+.modal-copy {
+  color: #cfcfcf;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.skill-card-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.skill-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.skill-option:has(input:checked) {
+  border-color: rgba(255, 90, 31, 0.7);
+  background: rgba(255, 90, 31, 0.12);
+}
+
+.skill-option input {
+  accent-color: #ff5a1f;
+}
+
+.skill-option-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.skill-option-copy strong {
+  font-size: 0.95rem;
+}
+
+.skill-option-copy span {
+  font-size: 0.75rem;
+  color: #9a9a9a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-btn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn.secondary {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.modal-btn.primary {
+  background: #ff5a1f;
+  color: #ffffff;
+}
+
+.report-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+  color: #dddddd;
+}
+
+.report-segment {
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.report-segment h3 {
+  font-size: 1rem;
+  margin-bottom: 6px;
+}
+
+.report-segment p,
+.report-focus li {
+  color: #cfcfcf;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.report-focus {
+  margin-top: 12px;
+  padding-left: 18px;
 }
 
 #analysis-canvas {
@@ -312,6 +532,14 @@ body::before {
    6️⃣ MOBILE RESPONSIVENESS
    ========================================================================== */
 @media (max-width: 640px) {
+  .live-toolbar {
+    align-items: flex-start;
+  }
+
+  .live-tool-btn span {
+    display: none;
+  }
+
   .container {
     padding: 16px;
     gap: 20px;

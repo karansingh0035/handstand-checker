@@ -176,20 +176,65 @@
         style="display: none"
       >
         <div class="canvas-wrapper">
-          <!-- 🆕 LIVE SESSION STOP CONTROL — floats over the feed, hidden
-               until a live session starts (shown/hidden via app.js) -->
-          <button
-            type="button"
-            class="icon-btn"
-            id="stop-live"
-            aria-label="Stop live session"
-            style="display: none"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-          </button>
-          <!-- The visual canvas overlay layer where we will draw tracking lines -->
+          <div class="live-toolbar" id="live-toolbar" hidden>
+            <div class="live-toolbar-left">
+              <span id="session-timer" class="session-timer-badge">00:00</span>
+              <span id="current-skill-badge" class="live-skill-badge">Push-up</span>
+              <span id="rep-count" class="live-counter-badge">0</span>
+            </div>
+            <div class="live-toolbar-right">
+              <button
+                type="button"
+                class="live-tool-btn"
+                id="change-skill-btn"
+                aria-label="Change skill"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h11" />
+                  <path d="M4 17h11" />
+                  <path d="M15 7l3-3 3 3" />
+                  <path d="M15 17l3 3 3-3" />
+                </svg>
+                <span>Change Skill</span>
+              </button>
+              <button
+                type="button"
+                class="icon-btn live-icon-btn"
+                id="pause-live-btn"
+                aria-label="Pause live session"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="icon-btn live-icon-btn"
+                id="mute-live-btn"
+                aria-label="Mute audio cues"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M19 6a9 9 0 0 1 0 12" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="icon-btn"
+                id="stop-live"
+                aria-label="End live session"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="pause-overlay" id="pause-overlay" hidden>
+            <span>Paused</span>
+          </div>
           <canvas id="analysis-canvas"></canvas>
         </div>
         <div class="dashboard-row">
@@ -209,6 +254,28 @@
               Awaiting video upload to run biomechanical analysis...
             </p>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="skill-switcher-modal" hidden>
+      <div class="modal-card" role="dialog" aria-labelledby="skill-switcher-title" aria-modal="true">
+        <h2 id="skill-switcher-title">Change skill</h2>
+        <p class="modal-copy">Pick the next live skill. Your camera, session timer, and previous segments stay running.</p>
+        <div class="skill-card-list" id="skill-switcher-list"></div>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn secondary" id="cancel-skill-switch">Cancel</button>
+          <button type="button" class="modal-btn primary" id="confirm-skill-switch">Switch Skill</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="session-report-modal" hidden>
+      <div class="modal-card report-card" role="dialog" aria-labelledby="session-report-title" aria-modal="true">
+        <h2 id="session-report-title">Session report</h2>
+        <div id="session-report-body"></div>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn primary" id="close-session-report">Close &amp; New Workout</button>
         </div>
       </div>
     </div>
