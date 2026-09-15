@@ -31,6 +31,7 @@ const uploadBar = document.querySelector(".upload-bar");
 const analysisWorkspace = document.getElementById("analysis-workspace");
 const analysisCanvas = document.getElementById("analysis-canvas");
 const canvasWrapper = document.querySelector(".canvas-wrapper");
+const dashboardRow = document.querySelector(".dashboard-row");
 const formScoreValue = document.getElementById("form-score-value");
 const coachingAdvice = document.getElementById("coaching-advice");
 
@@ -46,28 +47,20 @@ let landmarkHistory = [];
 let analysisFinalized = false; 
 let activeSkillConfig = null;  
 let isLiveEngineEnabled = false; 
+let isLiveSessionMode = false;
 
-// 🆕 Tracks whether ANY session (uploaded video OR live camera) is
-// currently supposed to be feeding frames. A live camera stream has no
-// natural "ended" event the way a video file does, so this flag is what
-// lets a manual Stop button halt the tick loop cleanly — the upload flow
-// still also relies on the video's real "ended" event as before, this
-// flag is just an additional safety switch shared by both paths.
 let isSessionActive = false;
-
-// 🆕 Holds the live camera's MediaStream so its tracks can be stopped
-// (releasing the camera) when a live session ends. Null during an
-// uploaded-video session.
 let liveStream = null;
 let liveTimerInterval = null;
 let pendingSkillKey = null;
+let currentVisualCue = null;
+let visualCueTimer = null;
 
 const liveSession = new LiveSessionController({
   onStateChange: syncLiveChrome
 });
 
-// Maps resolved skill keys to corresponding TrueFormEngine movement keys.
-// Dynamic rep-based exercises trigger live cues; static holds/levers bypass live processing.
+// Maps resolved skill keys to corresponding engine movement keys.
 const LIVE_ENGINE_SKILL_MAP = {
   "pushup": "pushup",
   "squat": "squat",
@@ -78,12 +71,22 @@ const LIVE_ENGINE_SKILL_MAP = {
   "90degreehspu": "ninetydegreehspu",
   "planchepushup": "planchepushup",
   "pseudoplanchepushup": "planchepushup",
-  "squat": "squat",
   "pikepushup": "pikepushup",
   "muscleup": "muscleup",
   "lsit": "lsit",
   "handstand": "handstand",
+  "vsit": "vsit",
+  "elbowlever": "elbowlever",
+  "planche": "planche",
+  "frontlever": "frontlever",
+  "backlever": "backlever",
+  "90degreehold": "ninetydegreehold",
+  "crowpose": "crowpose",
+  "frogstand": "frogstand",
+  "straddleplanche": "straddleplanche",
+  "planchelean": "planchelean"
 };
+
 const SKILL_ANALYZERS = {
   "handstand": { validateFn: validateHandstandVideo, scoreFn: scoreHandstand, label: "Handstand" },
   "pushup": { validateFn: validatePushupVideo, scoreFn: scorePushup, label: "Push-up" },
@@ -110,7 +113,7 @@ const SKILL_ANALYZERS = {
   "pikepushups": { validateFn: validatePikePushupVideo, scoreFn: scorePikePushup, label: "Pike Push-ups" },
   "planchepushup": { validateFn: validatePlanchePushupVideo, scoreFn: scorePlanchePushup, label: "Planche Push-up" },
   "squat": { validateFn: validateSquatVideo, scoreFn: scoreSquat, label: "Squat" },
-  "squats": { validateFn: validateSquatVideo, scoreFn: scoreSquat, label: "Squats" },
+  "squats": { validateFn: validateSquatVideo, scoreFn: scoreSquat, label: "Squats" }
 };
 
 function resolveSkill(rawInput) {
@@ -182,11 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initMediaPipe();
 });
 
-// 3️⃣ SKELETON RENDERING OVERLAY + SINGLE-DRIVEN ENGINE INTEGRATION
-// Unchanged from the upload-only version — this function was already
-// source-agnostic (it reads from `results.image` or falls back to
-// whatever `processingVideoElement` currently is), so it works identically
-// whether frames come from an uploaded file or a live camera stream.
+// 3️⃣ SKELETON RENDERING OVERLAY & REAL-TIME INGESTION
 function onPoseResults(results) {
   if (!results) return;
 
@@ -202,11 +201,7 @@ function onPoseResults(results) {
   }
 
   if (results.poseLandmarks) {
-    // Always store raw landmarks for post-hoc scoring function — this is
-    // what lets a live session still produce a final score/report once
-    // stopped, reusing the exact same scoreFn system as an uploaded video.
     landmarkHistory.push(results.poseLandmarks);
-
     let displayLandmarks = results.poseLandmarks;
 
     if (isLiveEngineEnabled) {
@@ -237,14 +232,12 @@ function onPoseResults(results) {
         }
       }
     } else {
-      // Bypassed for static holds/levers — clear or hide rep counters
       const repDisplay = document.getElementById('rep-count') || document.getElementById('repCount');
       if (repDisplay) {
         repDisplay.innerText = "--";
       }
     }
 
-    // Render skeleton overlay
     drawConnectors(ctx, displayLandmarks, POSE_CONNECTIONS, {
       color: '#FFFFFF',
       lineWidth: 3
@@ -279,20 +272,14 @@ function drawCueOverlay(canvasCtx, text) {
   canvasCtx.fillText(text, x, y);
 }
 
-// 🤸 POST-VIDEO / POST-SESSION SCORING
-// Works identically for an uploaded file or a stopped live session, since
-// both populate landmarkHistory the same way and both set
-// processingVideoElement.videoWidth/videoHeight once their source's
-// metadata has loaded.
+// 🤸 UPLOADED VIDEO POST-PROCESSING & SCORING
 async function runFinalFormScoring() {
-  if (analysisFinalized) return; 
+  if (analysisFinalized || isLiveSessionMode) return; 
   analysisFinalized = true;
 
   const videoWidth = processingVideoElement.videoWidth;
   const videoHeight = processingVideoElement.videoHeight;
 
-  // 🆕 Step 1: global, skill-agnostic quality gate — runs for every skill,
-  // regardless of whether that skill has its own validateFn built yet.
   const quality = validateVideoQuality(landmarkHistory);
   if (!quality.valid) {
     formScoreValue.textContent = "--";
@@ -300,10 +287,6 @@ async function runFinalFormScoring() {
     return;
   }
 
-  // 🆕 Step 2: skill-specific plausibility check. Only handstand and pushup
-  // have a validateFn so far — this is intentionally incremental (per the
-  // agreed rollout plan), not all-or-nothing. Skills without one yet fall
-  // straight through to scoring, exactly as before.
   if (activeSkillConfig.validateFn) {
     const skillCheck = activeSkillConfig.validateFn(landmarkHistory, videoWidth, videoHeight);
     if (!skillCheck.valid) {
@@ -367,8 +350,6 @@ function scheduleNextFrame() {
 }
 
 function startVideoProcessingLoop() {
-  // 🆕 Manual stop switch — a live camera stream never sets .ended, so
-  // this is what actually halts the loop when the user taps Stop.
   if (!isSessionActive) return;
 
   if (processingVideoElement.ended) {
@@ -397,11 +378,6 @@ function startVideoProcessingLoop() {
   scheduleNextFrame();
 }
 
-// 🆕 SHARED "SOURCE IS READY" SETUP — extracted from the upload flow so
-// both the uploaded-file path and the live-camera path use identical
-// canvas sizing / MediaPipe init / loop-start logic instead of duplicating
-// it. Assumes processingVideoElement.videoWidth/videoHeight are already
-// valid (i.e. this only gets called from an onloadeddata handler).
 function beginFrameProcessing() {
   const nativeWidth = processingVideoElement.videoWidth;
   const nativeHeight = processingVideoElement.videoHeight;
@@ -499,10 +475,6 @@ removeBtn.addEventListener("click", () => {
   previewContainer.style.display = "none";
 });
 
-// Shared by both the upload flow and the live flow: resolves the typed
-// skill, wires up the engine (or not, for static holds), and resets
-// per-session state. Returns the resolved skillConfig, or null if
-// resolution failed (an alert has already been shown in that case).
 function resetSessionVisuals() {
   landmarkHistory = [];
   analysisFinalized = false;
@@ -515,6 +487,9 @@ function resetSessionVisuals() {
 }
 
 function prepareSession() {
+  isLiveSessionMode = false;
+  dashboardRow.style.display = "flex";
+
   const skillConfig = resolveSkill(skillInput.value);
   if (!skillConfig) {
     const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
@@ -541,25 +516,32 @@ function prepareSession() {
 }
 
 function prepareLiveSession() {
-  const liveKey = resolveLiveSkill(skillInput.value);
-  if (!liveKey) {
-    const supportedList = getSupportedLiveSkills().map((s) => s.label).join(", ");
+  isLiveSessionMode = true;
+  dashboardRow.style.display = "none";
+
+  // Resolve against the full SKILL_ANALYZERS / SKILLS list instead of restricting to live-only
+  const skillConfig = resolveSkill(skillInput.value);
+  
+  if (!skillConfig) {
+    const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
     alert(
       skillInput.value.trim()
-        ? `"${skillInput.value.trim()}" isn't available in live mode yet. Live skills: ${supportedList}.`
-        : `Please type a live skill first. Live skills: ${supportedList}.`
+        ? `"${skillInput.value.trim()}" isn't supported yet. Supported skills: ${supportedList}.`
+        : `Please type a skill name first. Supported skills: ${supportedList}.`
     );
     return null;
   }
 
-  const skillConfig = resolveSkill(liveKey) || { key: liveKey, label: SKILLS[liveKey].label };
   activeSkillConfig = skillConfig;
   isLiveEngineEnabled = true;
-  engine.setMovement(liveKey);
+
+  // Map to the live engine key if available, or default to the base skill key
+  const engineKey = LIVE_ENGINE_SKILL_MAP[skillConfig.key] || skillConfig.key;
+  engine.setMovement(engineKey);
+
   resetSessionVisuals();
   return skillConfig;
-}
-
+} 
 function formatSessionClock(ms) {
   const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
@@ -627,15 +609,22 @@ function hideLiveChrome() {
 
 function populateSkillSwitcher() {
   if (!skillSwitcherList) return;
-  skillSwitcherList.innerHTML = getSupportedLiveSkills().map((skill) => `
-    <label class="skill-option">
-      <input type="radio" name="live-skill" value="${skill.key}" ${skill.key === liveSession.currentSkill ? "checked" : ""} />
-      <span class="skill-option-copy">
-        <strong>${skill.label}</strong>
-        <span>${skill.type === "hold" ? "Hold" : "Reps"}</span>
-      </span>
-    </label>
-  `).join("");
+
+  // Use SKILL_ANALYZERS so all 20+ skills populate into the modal list
+  skillSwitcherList.innerHTML = Object.entries(SKILL_ANALYZERS).map(([key, skill]) => {
+    const isHold = key.includes("hold") || key.includes("sit") || key.includes("stand") || key.includes("lever") || key.includes("planche") || key.includes("pose");
+    const activeKey = liveSession.currentSkill || activeSkillConfig?.key;
+
+    return `
+      <label class="skill-option">
+        <input type="radio" name="live-skill" value="${key}" ${key === activeKey ? "checked" : ""} />
+        <span class="skill-option-copy">
+          <strong>${escapeHtml(skill.label || key)}</strong>
+          <span>${isHold ? "HOLD" : "REPS"}</span>
+        </span>
+      </label>
+    `;
+  }).join("");
 }
 
 function openSkillSwitcher() {
@@ -649,26 +638,33 @@ function closeSkillSwitcher() {
 }
 
 function applySkillSwitch(nextSkillKey) {
-  const result = liveSession.changeSkill(nextSkillKey);
-  if (!result || result.error) {
-    alert(result?.error || "Could not switch skill.");
-    return;
-  }
-  if (result.unchanged) {
-    closeSkillSwitcher();
+  const nextConfig = SKILL_ANALYZERS[nextSkillKey];
+  if (!nextConfig) {
+    alert("Selected skill is not recognized.");
     return;
   }
 
-  engine.setMovement(result.nextSkill);
+  // Update movement key for engine
+  const engineKey = LIVE_ENGINE_SKILL_MAP[nextSkillKey] || nextSkillKey;
+  engine.setMovement(engineKey);
+
+  // Sync state
+  liveSession.currentSkill = nextSkillKey;
+  activeSkillConfig = resolveSkill(nextSkillKey) || { key: nextSkillKey, label: nextConfig.label };
+
+  if (currentSkillBadge) {
+    currentSkillBadge.textContent = nextConfig.label;
+  }
+
   currentVisualCue = null;
-  const nextConfig = SKILLS[result.nextSkill];
-  activeSkillConfig = resolveSkill(result.nextSkill) || { key: result.nextSkill, label: nextConfig.label };
-  coachingAdvice.textContent = `Coaching your ${nextConfig.label.toLowerCase()} live...`;
+
+  const isHold = nextSkillKey.includes("hold") || nextSkillKey.includes("sit") || nextSkillKey.includes("stand") || nextSkillKey.includes("lever") || nextSkillKey.includes("planche");
   updateLiveCounter({
-    type: nextConfig.type,
+    type: isHold ? "hold" : "rep",
     reps: 0,
     holdTimeMs: 0
   });
+
   closeSkillSwitcher();
 }
 
@@ -713,9 +709,11 @@ function resetToHome() {
   uploadBar.style.display = "";
   coachingAdvice.textContent = "Awaiting video upload to run biomechanical analysis...";
   formScoreValue.textContent = "--";
+  dashboardRow.style.display = "flex";
+  isLiveSessionMode = false;
 }
 
-// 5️⃣ SINGLE SOURCE OF TRUTH: DRIVE ENGINE & SCORER FROM ONE INPUT
+// 5️⃣ SINGLE SOURCE OF TRUTH: UPLOADED VIDEO ENGINE ANALYSIS
 uploadBtn.addEventListener("click", () => {
   if (!uploadedVideoFile) {
     alert("Please click the '+' button to select a form video first!");
@@ -744,17 +742,11 @@ uploadBtn.addEventListener("click", () => {
   processingVideoElement.src = URL.createObjectURL(uploadedVideoFile);
 });
 
-// 🆕 6️⃣ LIVE CAMERA MODE — real-time coaching, same skill input, same
-// underlying pipeline as the upload flow, but sourced from getUserMedia()
-// instead of a picked file, and ended manually via a Stop button instead
-// of a natural "ended" event.
 goLiveBtn.addEventListener("click", async () => {
   warmUpSpeech();
 
   const skillConfig = prepareLiveSession();
   if (!skillConfig) return;
-
-  coachingAdvice.textContent = `Coaching your ${skillConfig.label.toLowerCase()} live...`;
 
   let stream;
   try {
@@ -764,17 +756,39 @@ goLiveBtn.addEventListener("click", async () => {
     });
   } catch (err) {
     console.error("Camera access failed:", err);
-    alert("Couldn't access your camera. Please allow camera permission and try again — note this also requires HTTPS (or localhost) to work at all.");
+    alert("Couldn't access your camera. Please allow camera permission and try again.");
     return;
   }
 
   liveStream = stream;
-  liveSession.start(skillConfig.key);
+
+  // 1. Force the current skill property before starting session segments
+  liveSession.currentSkill = skillConfig.key;
+
+  // 2. Start the session controller
+  try {
+    liveSession.start(skillConfig.key);
+  } catch (e) {
+    console.warn("LiveSessionController fallback intercepted:", e);
+  }
+
+  // 3. Guarantee active segment matches current selected skill label
+  if (liveSession.activeSegment) {
+    liveSession.activeSegment.skillKey = skillConfig.key;
+    liveSession.activeSegment.skillLabel = skillConfig.label;
+  }
+
+  if (currentSkillBadge) {
+    currentSkillBadge.textContent = skillConfig.label;
+  }
+
   setAudioMuted(!liveSession.audioEnabled);
   showLiveChrome();
   startLiveTimer();
+
+  const isHold = skillConfig.key.includes("hold") || skillConfig.key.includes("sit") || skillConfig.key.includes("stand") || skillConfig.key.includes("lever") || skillConfig.key.includes("planche") || skillConfig.key.includes("pose");
   updateLiveCounter({
-    type: SKILLS[skillConfig.key]?.type || "rep",
+    type: isHold ? "hold" : "rep",
     reps: 0,
     holdTimeMs: 0
   });
@@ -816,7 +830,6 @@ stopLiveBtn.addEventListener("click", () => {
   setAudioMuted(false);
 
   if (ended && ended.report) {
-    coachingAdvice.textContent = ended.report.textReport;
     renderSessionReport(ended.report);
   }
 });

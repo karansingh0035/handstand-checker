@@ -16,10 +16,6 @@ export class BaseHoldEvaluator {
     this.recentPositions = [];
   }
 
-  /**
-   * Evaluates landmark stability over a short sliding window.
-   * Returns a score from 0.0 (high drift/jitter) to 1.0 (rock steady).
-   */
   computeStability(currentPoint) {
     if (!currentPoint) return 0.5;
     this.recentPositions.push({ x: currentPoint.x, y: currentPoint.y });
@@ -35,13 +31,9 @@ export class BaseHoldEvaluator {
       totalMovement += Math.hypot(curr.x - prev.x, curr.y - prev.y);
     }
     const avgMovement = totalMovement / (this.recentPositions.length - 1);
-    // Typical steady hold movement is < 0.01 in normalized coords per frame
     return Math.max(0.0, Math.min(1.0, 1.0 - (avgMovement / 0.05)));
   }
 
-  /**
-   * Helper to format a tracking-loss / low-confidence result.
-   */
   buildTrackingLossResult(poseConfidence) {
     return {
       skill: this.skillName,
@@ -54,13 +46,10 @@ export class BaseHoldEvaluator {
     };
   }
 
-  /**
-   * Helper to pick the best visible side (left vs right) from landmarks.
-   */
   getVisibleSideJoints(landmarks) {
     if (!landmarks || landmarks.length < 29) return null;
 
-    const leftIndices = [11, 13, 15, 23, 25, 27]; // shoulder, elbow, wrist, hip, knee, ankle
+    const leftIndices = [11, 13, 15, 23, 25, 27]; 
     const rightIndices = [12, 14, 16, 24, 26, 28];
 
     const getAvgVis = (indices) =>
@@ -86,256 +75,298 @@ export class BaseHoldEvaluator {
   }
 }
 
-/**
- * Live L-sit Evaluator
- * Evaluates streaming frames for L-sit hold geometry, separating resemblance
- * (skill likelihood) from execution correctness (form quality).
- */
+/** 1. L-sit Evaluator */
 export class LsitEvaluator extends BaseHoldEvaluator {
-  constructor() {
-    super('lsit');
-  }
+  constructor() { super('lsit'); }
 
-  evaluate(landmarks, timestampMs = performance.now()) {
+  evaluate(landmarks) {
     const sideData = this.getVisibleSideJoints(landmarks);
-    if (!sideData || sideData.confidence < 0.45) {
-      return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
-    }
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
     const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
-
-    // 1. Joint angles
-    const armLockoutAngle = angle(wrist, elbow, shoulder);
-    const hipAngle = angle(shoulder, hip, knee);
-    const legExtensionAngle = angle(hip, knee, ankle);
-    const torsoVert = torsoVertical(shoulder, hip);
+    const armLock = angle(wrist, elbow, shoulder);
+    const hipAng = angle(shoulder, hip, knee);
+    const legExt = angle(hip, knee, ankle);
     const stability = this.computeStability(hip);
 
-    // 2. Spatial indicators (image coords: y increases downward)
-    // Hands must be lower than shoulders (arms extending downward)
     const isHandsSupporting = wrist.y > shoulder.y + 0.15;
-    // Hips should be level with or above wrists (elevated off floor)
-    const hipElevationDelta = wrist.y - hip.y; // Positive if hip is above wrist
+    const hipElevationDelta = wrist.y - hip.y;
     const isHipsElevated = hipElevationDelta > -0.04;
-    // Legs extended forward: ankle.x should be significantly displaced from hip.x
     const legReach = Math.abs(ankle.x - hip.x);
 
-    // 3. Skill Likelihood: Does the body resemble an L-sit posture?
-    // High likelihood when hands support weight, hips are near wrist level, and legs reach forward in ~90° angle
     let likelihood = 0.0;
     if (isHandsSupporting && isHipsElevated) {
-      // Base score for supported hold
       likelihood += 0.40;
-
-      // Hip angle roughly in the L-sit pocket (60° to 125°)
-      if (hipAngle >= 65 && hipAngle <= 120) {
-        likelihood += 0.35;
-      } else if (hipAngle >= 50 && hipAngle <= 140) {
-        likelihood += 0.20;
-      }
-
-      // Legs extending horizontally
-      if (legReach > 0.12) {
-        likelihood += 0.25;
-      }
+      if (hipAng >= 65 && hipAng <= 120) likelihood += 0.35;
+      if (legReach > 0.12) likelihood += 0.25;
     }
-    const skillLikelihood = Math.max(0.0, Math.min(1.0, likelihood));
 
-    // 4. Form Quality: How cleanly is the L-sit executed?
     const faults = [];
+    if (armLock < 160) faults.push('bent_arms');
+    if (hipAng > 105 || hipElevationDelta < -0.02) faults.push('hips_dropping');
+    if (legExt < 155) faults.push('knee_bend');
 
-    // Quality Component A: Arm Lockout (ideal 170°-180°)
-    const armScore = Math.max(0.0, Math.min(1.0, (armLockoutAngle - 130) / 45));
-    if (armLockoutAngle < 160) {
-      faults.push('bent_arms');
-    }
-
-    // Quality Component B: Hip Angle (ideal 85°-95° = 1.0)
-    const hipDev = Math.abs(hipAngle - 90);
-    const hipScore = Math.max(0.0, Math.min(1.0, 1.0 - (hipDev / 40)));
-    if (hipAngle > 105 || hipElevationDelta < -0.02) {
-      faults.push('hips_dropping');
-    }
-
-    // Quality Component C: Leg Extension (ideal 170°-180°)
-    const legScore = Math.max(0.0, Math.min(1.0, (legExtensionAngle - 110) / 65));
-    if (legExtensionAngle < 155) {
-      faults.push('knee_bend');
-    }
-
-    // Quality Component D: Torso Verticality (ideal < 15°)
-    const torsoScore = Math.max(0.0, Math.min(1.0, 1.0 - (torsoVert / 35)));
-    if (torsoVert > 20) {
-      faults.push('torso_lean');
-    }
-
-    // Quality Component E: Hand Support / Hip Elevation
-    const supportScore = Math.max(0.0, Math.min(1.0, (hipElevationDelta + 0.05) / 0.15));
-
-    let qualityPenalty = 1.0;
-    if (legExtensionAngle < 150) {
-      qualityPenalty *= Math.max(0.4, (legExtensionAngle - 90) / 60);
-    }
-    if (hipAngle > 105) {
-      qualityPenalty *= Math.max(0.5, hipScore);
-    }
-    if (hipElevationDelta < -0.02) {
-      qualityPenalty *= Math.max(0.3, supportScore);
-    }
-    if (armLockoutAngle < 155) {
-      qualityPenalty *= Math.max(0.6, armScore);
-    }
-
-    const baseQuality = (
-      armScore * 0.20 +
-      hipScore * 0.25 +
-      legScore * 0.30 +
-      torsoScore * 0.15 +
-      stability * 0.10
-    );
-
-    const formQuality = Math.max(0.0, Math.min(1.0, baseQuality * qualityPenalty));
+    const formQuality = Math.max(0, Math.min(1, ((armLock / 180) * 0.3 + (1 - Math.abs(hipAng - 90)/50) * 0.4 + stability * 0.3)));
 
     return {
-      skill: 'lsit',
-      type: 'hold',
-      poseConfidence: Math.round(confidence * 100) / 100,
-      skillLikelihood: Math.round(skillLikelihood * 100) / 100,
-      formQuality: Math.round(formQuality * 100) / 100,
-      metrics: {
-        hipAngle: Math.round(hipAngle),
-        legExtension: Math.round(legScore * 100) / 100,
-        armLockout: Math.round(armLockoutAngle),
-        torsoVertical: Math.round(torsoVert),
-        handSupport: Math.round(supportScore * 100) / 100,
-        stability: Math.round(stability * 100) / 100
-      },
+      skill: 'lsit', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: Math.min(1, likelihood), formQuality,
+      metrics: { hipAngle: Math.round(hipAng), armLockout: Math.round(armLock), stability: Math.round(stability * 100) / 100 },
       faults
     };
   }
 }
 
-/**
- * Live Handstand Evaluator
- * Evaluates streaming frames for inverted orientation, joint stack, arm lockout,
- * and body line alignment. Rejects kick-ups prior to dwell confirmation.
- */
-export class HandstandEvaluator extends BaseHoldEvaluator {
-  constructor() {
-    super('handstand');
-  }
+/** 2. V-sit Evaluator */
+export class VsitEvaluator extends BaseHoldEvaluator {
+  constructor() { super('vsit'); }
 
-  evaluate(landmarks, timestampMs = performance.now()) {
+  evaluate(landmarks) {
     const sideData = this.getVisibleSideJoints(landmarks);
-    if (!sideData || sideData.confidence < 0.45) {
-      return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
-    }
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
     const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
+    const hipAng = angle(shoulder, hip, knee);
+    const legExt = angle(hip, knee, ankle);
+    const stability = this.computeStability(hip);
 
-    // 1. Inversion Check (image coords: y increases downward)
-    // In a handstand, body must be inverted: hips and ankles above shoulders,
-    // and shoulders stacked above wrists on the ground.
+    const faults = [];
+    if (hipAng > 70) faults.push('insufficient_compression');
+    if (legExt < 160) faults.push('knee_bend');
+
+    const likelihood = hipAng < 80 ? 0.9 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (1 - hipAng / 90) * 0.7 + stability * 0.3));
+
+    return {
+      skill: 'vsit', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { compressionAngle: Math.round(hipAng), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+/** 3. Handstand Evaluator */
+export class HandstandEvaluator extends BaseHoldEvaluator {
+  constructor() { super('handstand'); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
     const isShoulderAboveWrist = shoulder.y < wrist.y - 0.05;
     const isHipAboveShoulder = hip.y < shoulder.y - 0.05;
     const isAnkleAboveHip = ankle.y < hip.y - 0.05;
 
-    let inversion = 0.0;
-    if (isHipAboveShoulder && isAnkleAboveHip) {
-      inversion = 0.70;
-      if (isShoulderAboveWrist) inversion += 0.30;
-    } else if (isHipAboveShoulder) {
-      inversion = 0.35;
-    }
-
-    // 2. Arm Lockout & Elevation
-    const armLockoutAngle = angle(wrist, elbow, shoulder);
-    const armScore = Math.max(0.0, Math.min(1.0, (armLockoutAngle - 135) / 40));
-
-    // 3. Vertical Stack Alignment (wrist, shoulder, and hip in vertical column)
-    const wristShoulderOffsetX = Math.abs(wrist.x - shoulder.x);
-    const shoulderHipOffsetX = Math.abs(shoulder.x - hip.x);
-    const stackDeviation = wristShoulderOffsetX + shoulderHipOffsetX;
-    const stackQuality = Math.max(0.0, Math.min(1.0, 1.0 - (stackDeviation / 0.30)));
-
-    // 4. Body Line (arch vs pike)
-    const lineData = bodyLine(shoulder, hip, ankle);
-    const bodyLineDeviation = lineData.deviation;
-    const bodyLineScore = Math.max(0.0, Math.min(1.0, 1.0 - (bodyLineDeviation / 35)));
-
-    // 5. Leg Straightness
-    const legAngle = angle(hip, knee, ankle);
-    const legScore = Math.max(0.0, Math.min(1.0, (legAngle - 130) / 45));
-
-    // 6. Stability over time
+    const armLock = angle(wrist, elbow, shoulder);
+    const line = bodyLine(shoulder, hip, ankle);
     const stability = this.computeStability(shoulder);
 
-    // Skill Likelihood: High only when fully or mostly inverted and weight-bearing
     let likelihood = 0.0;
     if (isShoulderAboveWrist && isHipAboveShoulder) {
-      likelihood += 0.50;
-      if (isAnkleAboveHip) likelihood += 0.35;
-      if (armLockoutAngle > 145) likelihood += 0.15;
+      likelihood += 0.6;
+      if (isAnkleAboveHip) likelihood += 0.4;
     }
-    const skillLikelihood = Math.max(0.0, Math.min(1.0, likelihood));
 
-    // Form Quality & Faults
     const faults = [];
+    if (armLock < 165) faults.push('bent_arms');
+    if (line.deviation > 15) faults.push(line.isPike ? 'hip_pike' : 'hip_arch');
 
-    if (armLockoutAngle < 165) {
-      faults.push('bent_arms');
-    }
-
-    if (stackDeviation > 0.16) {
-      faults.push('shoulder_misalignment');
-    }
-
-    if (bodyLineDeviation > 15) {
-      if (lineData.isPike) {
-        faults.push('hip_pike');
-      } else {
-        faults.push('hip_arch');
-      }
-    }
-
-    if (legAngle < 165) {
-      faults.push('bent_legs');
-    }
-
-    let qualityPenalty = 1.0;
-    if (armLockoutAngle < 155) {
-      qualityPenalty *= Math.max(0.4, armScore);
-    }
-    if (bodyLineDeviation > 20) {
-      qualityPenalty *= Math.max(0.5, bodyLineScore);
-    }
-    if (stackDeviation > 0.20) {
-      qualityPenalty *= Math.max(0.5, stackQuality);
-    }
-
-    const baseQuality = (
-      armScore * 0.25 +
-      stackQuality * 0.30 +
-      bodyLineScore * 0.25 +
-      legScore * 0.10 +
-      stability * 0.10
-    );
-
-    const formQuality = Math.max(0.0, Math.min(1.0, baseQuality * qualityPenalty * inversion));
+    const formQuality = Math.max(0, Math.min(1, (armLock / 180) * 0.4 + (1 - line.deviation / 35) * 0.4 + stability * 0.2));
 
     return {
-      skill: 'handstand',
-      type: 'hold',
-      poseConfidence: Math.round(confidence * 100) / 100,
-      skillLikelihood: Math.round(skillLikelihood * 100) / 100,
-      formQuality: Math.round(formQuality * 100) / 100,
-      metrics: {
-        inversion: Math.round(inversion * 100) / 100,
-        shoulderElevation: Math.round(armScore * 100) / 100,
-        stackQuality: Math.round(stackQuality * 100) / 100,
-        bodyLineDeviation: Math.round(bodyLineDeviation),
-        stability: Math.round(stability * 100) / 100
-      },
+      skill: 'handstand', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { armLockout: Math.round(armLock), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+/** 4. Planche Evaluators */
+export class PlancheEvaluator extends BaseHoldEvaluator {
+  constructor(variant = 'planche') { super(variant); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
+    const armLock = angle(wrist, elbow, shoulder);
+    const line = bodyLine(shoulder, hip, ankle);
+    const stability = this.computeStability(hip);
+
+    const isHorizontal = Math.abs(shoulder.y - hip.y) < 0.12;
+
+    const faults = [];
+    if (armLock < 165) faults.push('bent_arms');
+    if (hip.y > shoulder.y + 0.08) faults.push('sagging_hips');
+    if (hip.y < shoulder.y - 0.08) faults.push('piking_hips');
+
+    const likelihood = isHorizontal ? 0.85 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (armLock / 180) * 0.4 + (1 - line.deviation / 30) * 0.4 + stability * 0.2));
+
+    return {
+      skill: this.skillName, type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { armLockout: Math.round(armLock), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+export class StraddlePlancheEvaluator extends PlancheEvaluator {
+  constructor() { super('straddleplanche'); }
+}
+
+export class PlancheLeanEvaluator extends PlancheEvaluator {
+  constructor() { super('planchelean'); }
+}
+
+/** 5. Front Lever Evaluator */
+export class FrontLeverEvaluator extends BaseHoldEvaluator {
+  constructor() { super('frontlever'); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
+    const armLock = angle(wrist, elbow, shoulder);
+    const line = bodyLine(shoulder, hip, ankle);
+    const stability = this.computeStability(hip);
+
+    const isHorizontal = Math.abs(shoulder.y - hip.y) < 0.10;
+
+    const faults = [];
+    if (armLock < 165) faults.push('bent_arms');
+    if (hip.y > shoulder.y + 0.06) faults.push('hip_drop');
+
+    const likelihood = isHorizontal ? 0.9 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (1 - line.deviation / 25) * 0.7 + stability * 0.3));
+
+    return {
+      skill: 'frontlever', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { armLockout: Math.round(armLock), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+/** 6. Back Lever Evaluator */
+export class BackLeverEvaluator extends BaseHoldEvaluator {
+  constructor() { super('backlever'); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, knee, ankle } = sideData;
+    const armLock = angle(wrist, elbow, shoulder);
+    const line = bodyLine(shoulder, hip, ankle);
+    const stability = this.computeStability(hip);
+
+    const faults = [];
+    if (armLock < 160) faults.push('bent_arms');
+    if (line.deviation > 20) faults.push('arch_or_pike');
+
+    const likelihood = Math.abs(shoulder.y - hip.y) < 0.12 ? 0.85 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (1 - line.deviation / 30) * 0.7 + stability * 0.3));
+
+    return {
+      skill: 'backlever', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { armLockout: Math.round(armLock), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+/** 7. Crow Pose / Frog Stand Evaluators */
+export class CrowPoseEvaluator extends BaseHoldEvaluator {
+  constructor(variant = 'crowpose') { super(variant); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, knee } = sideData;
+    const isKneeNearElbow = Math.hypot(knee.x - elbow.x, knee.y - elbow.y) < 0.15;
+    const isSupported = wrist.y > shoulder.y + 0.1;
+    const stability = this.computeStability(hip);
+
+    const faults = [];
+    if (!isKneeNearElbow) faults.push('knees_off_arms');
+
+    const likelihood = isSupported && isKneeNearElbow ? 0.9 : 0.3;
+    const formQuality = Math.max(0, Math.min(1, (isKneeNearElbow ? 0.6 : 0.2) + stability * 0.4));
+
+    return {
+      skill: this.skillName, type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { kneeArmContact: isKneeNearElbow ? 1.0 : 0.0, stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+export class FrogStandEvaluator extends CrowPoseEvaluator {
+  constructor() { super('frogstand'); }
+}
+
+/** 8. Elbow Lever Evaluator */
+export class ElbowLeverEvaluator extends BaseHoldEvaluator {
+  constructor() { super('elbowlever'); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, hip, ankle } = sideData;
+    const line = bodyLine(shoulder, hip, ankle);
+    const isElbowSupporting = Math.hypot(elbow.x - hip.x, elbow.y - hip.y) < 0.18;
+    const stability = this.computeStability(hip);
+
+    const faults = [];
+    if (!isElbowSupporting) faults.push('elbows_flared');
+
+    const likelihood = isElbowSupporting ? 0.85 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (1 - line.deviation / 30) * 0.6 + stability * 0.4));
+
+    return {
+      skill: 'elbowlever', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      faults
+    };
+  }
+}
+
+/** 9. 90-Degree Hold Evaluator */
+export class NinetyDegreeHoldEvaluator extends BaseHoldEvaluator {
+  constructor() { super('90degreehold'); }
+
+  evaluate(landmarks) {
+    const sideData = this.getVisibleSideJoints(landmarks);
+    if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
+
+    const { confidence, shoulder, elbow, wrist, hip, ankle } = sideData;
+    const elbowAngle = angle(shoulder, elbow, wrist);
+    const line = bodyLine(shoulder, hip, ankle);
+    const stability = this.computeStability(hip);
+
+    const faults = [];
+    if (Math.abs(elbowAngle - 90) > 15) faults.push('improper_elbow_bend');
+
+    const likelihood = Math.abs(elbowAngle - 90) < 25 ? 0.85 : 0.2;
+    const formQuality = Math.max(0, Math.min(1, (1 - Math.abs(elbowAngle - 90)/30) * 0.6 + stability * 0.4));
+
+    return {
+      skill: '90degreehold', type: 'hold', poseConfidence: confidence,
+      skillLikelihood: likelihood, formQuality,
+      metrics: { elbowAngle: Math.round(elbowAngle), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
       faults
     };
   }

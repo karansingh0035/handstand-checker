@@ -382,6 +382,9 @@ body::before {
   display: grid;
   gap: 8px;
   margin-bottom: 18px;
+  max-height: 280px;      /* Restrict height so modal remains compact */
+  overflow-y: auto;       /* Enable vertical scrollbar when skills exceed height */
+  padding-right: 6px;     /* Prevent scrollbar overlapping the selection cards */
 }
 
 .skill-option {
