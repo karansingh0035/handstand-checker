@@ -4,6 +4,7 @@ import { angle, torsoVertical, bodyLine } from './primitives.js';
 /**
  * Base class for streaming static hold evaluators.
  * Guarantees common result schema across all hold skills.
+ * FIX Bug #4: Added timestamp parameter for frame rate adaptive detection
  */
 export class BaseHoldEvaluator {
   constructor(skillName) {
@@ -79,7 +80,7 @@ export class BaseHoldEvaluator {
 export class LsitEvaluator extends BaseHoldEvaluator {
   constructor() { super('lsit'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -121,7 +122,7 @@ export class LsitEvaluator extends BaseHoldEvaluator {
 export class VsitEvaluator extends BaseHoldEvaluator {
   constructor() { super('vsit'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -150,7 +151,7 @@ export class VsitEvaluator extends BaseHoldEvaluator {
 export class HandstandEvaluator extends BaseHoldEvaluator {
   constructor() { super('handstand'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -188,7 +189,7 @@ export class HandstandEvaluator extends BaseHoldEvaluator {
 export class PlancheEvaluator extends BaseHoldEvaluator {
   constructor(variant = 'planche') { super(variant); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -228,7 +229,7 @@ export class PlancheLeanEvaluator extends PlancheEvaluator {
 export class FrontLeverEvaluator extends BaseHoldEvaluator {
   constructor() { super('frontlever'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -259,7 +260,7 @@ export class FrontLeverEvaluator extends BaseHoldEvaluator {
 export class BackLeverEvaluator extends BaseHoldEvaluator {
   constructor() { super('backlever'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -288,7 +289,7 @@ export class BackLeverEvaluator extends BaseHoldEvaluator {
 export class CrowPoseEvaluator extends BaseHoldEvaluator {
   constructor(variant = 'crowpose') { super(variant); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -320,7 +321,7 @@ export class FrogStandEvaluator extends CrowPoseEvaluator {
 export class ElbowLeverEvaluator extends BaseHoldEvaluator {
   constructor() { super('elbowlever'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
@@ -348,7 +349,7 @@ export class ElbowLeverEvaluator extends BaseHoldEvaluator {
 export class NinetyDegreeHoldEvaluator extends BaseHoldEvaluator {
   constructor() { super('90degreehold'); }
 
-  evaluate(landmarks) {
+  evaluate(landmarks, timestamp = performance.now()) {
     const sideData = this.getVisibleSideJoints(landmarks);
     if (!sideData || sideData.confidence < 0.45) return this.buildTrackingLossResult(sideData ? sideData.confidence : 0);
 
