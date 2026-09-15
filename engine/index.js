@@ -155,10 +155,12 @@ export function speakCue(text) {
     if (currentUtterance === utterance) currentUtterance = null;
   };
 
+  // FIX Bug #7: Increase debounce from 10ms to 200ms to prevent audio cue loss
+  // This ensures rapid-fire violations don't cancel the first cue mid-speech
   pendingSpeakTimeout = setTimeout(() => {
     window.speechSynthesis.speak(utterance);
     pendingSpeakTimeout = null;
-  }, 10);
+  }, 200);
 }
 
 const SIGNAL_HYSTERESIS = {
@@ -166,12 +168,15 @@ const SIGNAL_HYSTERESIS = {
   muscleup: { troughExitDelta: 0.25, topReturnDelta: 0.15, bottomOvershootDelta: 0.6, expectedRom: 1.0 }
 };
 
+// FIX Bug #8: Add plausibility checks for hold-based skills
+// Prevents invalid poses (e.g., standing still) from registering as holds in upload mode
 const PLAUSIBILITY_CHECKS = {
   pushup: (rep) => rep.torsoVertical >= 40,
   handstandpushup: (rep) => rep.torsoVertical >= 40,
   ninetydegreehspu: (rep) => rep.torsoVertical >= 40,
   planchepushup: (rep) => rep.torsoVertical >= 40,
   pikepushup: (rep) => rep.torsoVertical >= 30,
+  pseudoplanchepushup: (rep) => rep.torsoVertical >= 35,
   squat: (rep) => rep.torsoVertical <= 70,
   pullup: (rep) => {
     const wristRange = rep.maxWristY - rep.minWristY;
@@ -183,6 +188,19 @@ const PLAUSIBILITY_CHECKS = {
     const shoulderRange = rep.maxShoulderY - rep.minShoulderY;
     return (shoulderRange - wristRange) > 0.06;
   },
+  // 🆕 Hold skill plausibility checks for video upload mode
+  handstand: (rep) => rep.torsoVertical >= 70,      // Body must be nearly vertical
+  lsit: (rep) => rep.maxElbowAngle >= 160,          // Arms must be locked
+  vsit: (rep) => rep.torsoVertical <= 45,           // Torso must be nearly vertical (V position)
+  planche: (rep) => rep.shoulderLean > 0.1,         // Shoulders must be forward
+  straddleplanche: (rep) => rep.shoulderLean > 0.08, // Lighter shoulder forward requirement
+  planchelean: (rep) => rep.shoulderLean > 0.12,    // More aggressive shoulder forward
+  frontlever: (rep) => rep.torsoVertical <= 45,     // Body must be horizontal
+  backlever: (rep) => rep.torsoVertical >= 65,      // Body extension visible
+  crowpose: (rep) => rep.bodyLineDeviation < 20,    // Reasonable form deviation
+  frogstand: (rep) => rep.bodyLineDeviation < 25,   // More lenient than crow pose
+  elbowlever: (rep) => rep.torsoVertical <= 50,     // Horizontal body extension
+  ninetydegreehold: (rep) => rep.bodyLineDeviation < 15 // Tight body line
 };
 
 const HOLD_CUES = {
