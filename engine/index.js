@@ -38,14 +38,6 @@ export {
   formatFaultLabel
 };
 
-<<<<<<< Updated upstream
-export function speakCue(text) {
-  if (!('speechSynthesis' in window) || !text) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.1;
-  window.speechSynthesis.speak(utterance);
-=======
 // engine/index.js (Top level)
 let cachedVoice = null;
 let currentUtterance = null;
@@ -159,7 +151,6 @@ export function speakCue(text) {
     window.speechSynthesis.speak(utterance);
     pendingSpeakTimeout = null;
   }, 10);
->>>>>>> Stashed changes
 }
 
 // 🆕 RepSegmenter's hysteresis/ROM thresholds are tuned for degree-based

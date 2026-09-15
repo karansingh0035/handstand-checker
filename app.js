@@ -1,9 +1,5 @@
 // app.js
-<<<<<<< Updated upstream
-import { TrueFormEngine } from './engine/index.js';
-=======
 import { TrueFormEngine, warmUpSpeech, LiveSessionController, getSupportedLiveSkills, resolveLiveSkill, SKILLS, setAudioMuted } from './engine/index.js';
->>>>>>> Stashed changes
 
 // 1️⃣ DOM INTERFACE ELEMENTS & TARGET HANDLES
 const plusBtn = document.getElementById("plus");
@@ -222,11 +218,6 @@ function onPoseResults(results) {
         const frameResult = engine.processFrame(results.poseLandmarks);
         displayLandmarks = frameResult.landmarks || displayLandmarks;
 
-<<<<<<< Updated upstream
-      // 3. Draw visual coaching cue pill on canvas
-      if (frameResult.activeCue) {
-        drawCueOverlay(ctx, frameResult.activeCue.cue);
-=======
         if (liveSession.isActive) {
           liveSession.ingestFrame(frameResult);
         }
@@ -244,7 +235,6 @@ function onPoseResults(results) {
         if (currentVisualCue) {
           drawCueOverlay(ctx, currentVisualCue);
         }
->>>>>>> Stashed changes
       }
     } else {
       // Bypassed for static holds/levers — clear or hide rep counters
@@ -546,11 +536,6 @@ function prepareSession() {
     isLiveEngineEnabled = false;
   }
 
-<<<<<<< Updated upstream
-  landmarkHistory = [];
-  analysisFinalized = false;
-  formScoreValue.textContent = "--";
-=======
   resetSessionVisuals();
   return skillConfig;
 }
@@ -566,7 +551,6 @@ function prepareLiveSession() {
     );
     return null;
   }
->>>>>>> Stashed changes
 
   const skillConfig = resolveSkill(liveKey) || { key: liveKey, label: SKILLS[liveKey].label };
   activeSkillConfig = skillConfig;
@@ -765,13 +749,9 @@ uploadBtn.addEventListener("click", () => {
 // instead of a picked file, and ended manually via a Stop button instead
 // of a natural "ended" event.
 goLiveBtn.addEventListener("click", async () => {
-<<<<<<< Updated upstream
-  const skillConfig = prepareSession();
-=======
   warmUpSpeech();
 
   const skillConfig = prepareLiveSession();
->>>>>>> Stashed changes
   if (!skillConfig) return;
 
   coachingAdvice.textContent = `Coaching your ${skillConfig.label.toLowerCase()} live...`;
@@ -824,15 +804,11 @@ stopLiveBtn.addEventListener("click", () => {
   if (!liveSession.isActive && !isSessionActive) return;
 
   isSessionActive = false;
-<<<<<<< Updated upstream
-  stopLiveBtn.style.display = "none";
-=======
   currentVisualCue = null;
   if (visualCueTimer) {
     clearTimeout(visualCueTimer);
     visualCueTimer = null;
   }
->>>>>>> Stashed changes
 
   const ended = liveSession.end();
   stopLiveCamera();
