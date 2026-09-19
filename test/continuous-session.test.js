@@ -8,7 +8,8 @@ import {
   SegmentManager,
   LiveSessionController,
   SessionReportBuilder,
-  TrueFormEngine
+  TrueFormEngine,
+  validateSegmentPerformance
 } from '../engine/index.js';
 
 console.log('--- Starting TrueForm Continuous Live Session Test Suite ---');
@@ -69,22 +70,37 @@ function fakeHoldFrame(skill, overrides = {}) {
 
 console.log('\n[Suite A: Live-skill registry]');
 
-it('Registry exposes only verified live skills', () => {
+it('Registry exposes all 21 skills in live session', () => {
   const keys = getSupportedLiveSkills().map((s) => s.key).sort();
-  assert.deepEqual(keys, ['handstand', 'lsit', 'pullup', 'pushup', 'squat'].sort());
+  const expected = [
+    'backlever', 'crowpose', 'elbowlever', 'frogstand', 'frontlever',
+    'handstand', 'handstandpushup', 'lsit', 'muscleup', 'ninetydegreehold',
+    'ninetydegreehspu', 'pikepushup', 'planche', 'planchelean', 'planchepushup',
+    'pseudoplanchepushup', 'pullup', 'pushup', 'squat', 'straddleplanche', 'vsit'
+  ].sort();
+  assert.deepEqual(keys, expected);
   assert.equal(SKILLS.pushup.type, 'rep');
+  assert.equal(SKILLS.muscleup.type, 'rep');
+  assert.equal(SKILLS.handstandpushup.type, 'rep');
   assert.equal(SKILLS.handstand.type, 'hold');
   assert.equal(SKILLS.lsit.type, 'hold');
+  assert.equal(SKILLS.planche.type, 'hold');
+  assert.equal(SKILLS.frontlever.type, 'hold');
 });
 
-it('Alias resolution accepts lsits/pushups and rejects unsupported upload-only skills', () => {
+it('Alias resolution accepts all skill aliases and rejects unsupported non-calisthenics inputs', () => {
   assert.equal(resolveLiveSkill('Push-ups'), 'pushup');
   assert.equal(resolveLiveSkill('lsits'), 'lsit');
   assert.equal(resolveLiveSkill('handstands'), 'handstand');
-  assert.equal(isSupportedLiveSkill('hspu'), false);
-  assert.equal(resolveLiveSkill('hspu'), null);
-  assert.equal(resolveLiveSkill('planche'), null);
-  assert.equal(resolveLiveSkill('muscleup'), null);
+  assert.equal(resolveLiveSkill('hspu'), 'handstandpushup');
+  assert.equal(resolveLiveSkill('planche'), 'planche');
+  assert.equal(resolveLiveSkill('muscleup'), 'muscleup');
+  assert.equal(resolveLiveSkill('pppu'), 'pseudoplanchepushup');
+  assert.equal(resolveLiveSkill('90degreehold'), 'ninetydegreehold');
+  assert.equal(isSupportedLiveSkill('hspu'), true);
+  assert.equal(isSupportedLiveSkill('planche'), true);
+  assert.equal(isSupportedLiveSkill('fictional_exercise'), false);
+  assert.equal(resolveLiveSkill('fictional_exercise'), null);
 });
 
 console.log('\n[Suite B: Multi-skill switching & isolation]');
@@ -201,7 +217,7 @@ it('Unsupported live skill is rejected and does not close the current segment', 
   const session = new LiveSessionController();
   session.start('pushup', 0);
   const activeId = session.currentSegmentId;
-  const result = session.changeSkill('planche', 500);
+  const result = session.changeSkill('unsupported_movement', 500);
   assert.equal(result.error.includes('Unsupported'), true);
   assert.equal(session.currentSkill, 'pushup');
   assert.equal(session.currentSegmentId, activeId);
@@ -259,6 +275,95 @@ it('SegmentManager archives closed segments independently of later updates', () 
   assert.equal(manager.getCompletedSegments()[0].reps, 2);
   assert.equal(manager.getCurrentSegment().skill, 'squat');
   assert.equal(manager.getCurrentSegment().reps, 1);
+});
+
+console.log('\n[Suite E: Multi-skill live session validation]');
+
+it('validateSegmentPerformance: Flags not_detected when rep count is 0 or hold is insufficient', () => {
+  const emptyRepSeg = {
+    skill: 'pushup',
+    label: 'Push-up',
+    type: 'rep',
+    reps: 0,
+    bestHoldMs: 0,
+    averageConfidence: 0.88,
+    _confidenceFrames: 30,
+    _uncertainFrames: 0,
+    faults: []
+  };
+  const repVal = validateSegmentPerformance(emptyRepSeg);
+  assert.equal(repVal.performed, false);
+  assert.equal(repVal.status, 'not_detected');
+  assert.match(repVal.message, /Could not detect any Push-up/);
+
+  const emptyHoldSeg = {
+    skill: 'handstand',
+    label: 'Handstand',
+    type: 'hold',
+    reps: 0,
+    bestHoldMs: 250,
+    averageConfidence: 0.85,
+    _confidenceFrames: 30,
+    _uncertainFrames: 0,
+    faults: []
+  };
+  const holdVal = validateSegmentPerformance(emptyHoldSeg);
+  assert.equal(holdVal.performed, false);
+  assert.equal(holdVal.status, 'not_detected');
+  assert.match(holdVal.message, /Could not detect any Handstand/);
+});
+
+it('validateSegmentPerformance: Flags bad_lighting_or_camera_angle on low confidence or high tracking loss', () => {
+  const poorLightingSeg = {
+    skill: 'pushup',
+    label: 'Push-up',
+    type: 'rep',
+    reps: 0,
+    bestHoldMs: 0,
+    averageConfidence: 0.32,
+    _confidenceFrames: 25,
+    _uncertainFrames: 18,
+    faults: []
+  };
+  const val = validateSegmentPerformance(poorLightingSeg);
+  assert.equal(val.performed, false);
+  assert.equal(val.status, 'bad_lighting_or_camera_angle');
+  assert.match(val.message, /Bad lighting and camera angle/);
+});
+
+it('SessionReportBuilder: Generates feedback notice when all attempted skills are not detected', () => {
+  const session = new LiveSessionController();
+  session.start('pushup', 0);
+  // Standing idle, 0 reps
+  session.ingestFrame(fakeRepFrame({ reps: 0, poseConfidence: 0.85 }), 1000);
+  session.changeSkill('handstand', 2000);
+  // Brief 150ms flash, no confirmed hold
+  session.ingestFrame(fakeHoldFrame('handstand', { bestHoldMs: 150, holdTimeMs: 150 }), 3000);
+
+  const ended = session.end(4000);
+  const report = ended.report;
+
+  assert.equal(report.allUnperformed, true);
+  assert.ok(report.feedbackNotice);
+  assert.match(report.feedbackNotice, /Could not detect any/);
+  assert.match(report.textReport, /Could not detect any/);
+  assert.equal(report.segmentSummaries[0].performed, false);
+  assert.equal(report.segmentSummaries[1].performed, false);
+});
+
+it('SessionReportBuilder: Generates bad lighting notice when tracking confidence fails', () => {
+  const session = new LiveSessionController();
+  session.start('pushup', 0);
+  for (let i = 1; i <= 15; i++) {
+    session.ingestFrame(fakeRepFrame({ reps: 0, poseConfidence: 0.25, status: 'uncertain' }), i * 100);
+  }
+  const ended = session.end(2000);
+  const report = ended.report;
+
+  assert.equal(report.allUnperformed, true);
+  assert.ok(report.feedbackNotice);
+  assert.match(report.feedbackNotice, /Bad lighting and camera angle/);
+  assert.match(report.textReport, /Bad lighting and camera angle/);
 });
 
 console.log(`\nAll ${passedTests}/${totalTests} tests passed successfully!`);

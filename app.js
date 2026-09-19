@@ -72,7 +72,7 @@ const LIVE_ENGINE_SKILL_MAP = {
   "hspu": "handstandpushup",
   "90degreehspu": "ninetydegreehspu",
   "planchepushup": "planchepushup",
-  "pseudoplanchepushup": "planchepushup",
+  "pseudoplanchepushup": "pseudoplanchepushup",
   "pikepushup": "pikepushup",
   "muscleup": "muscleup",
   "lsit": "lsit",
@@ -529,22 +529,22 @@ function prepareLiveSession() {
   isLiveSessionMode = true;
   dashboardRow.style.display = "none";
 
-  const skillConfig = resolveSkill(skillInput.value);
-  
-  if (!skillConfig) {
-    const supportedList = Object.values(SKILL_ANALYZERS).map((s) => s.label).join(", ");
+  const resolvedKey = resolveLiveSkill(skillInput.value);
+  if (!resolvedKey) {
+    const supportedList = getSupportedLiveSkills().map((s) => s.label).join(", ");
     alert(
       skillInput.value.trim()
-        ? `"${skillInput.value.trim()}" isn't supported yet. Supported skills: ${supportedList}.`
-        : `Please type a skill name first. Supported skills: ${supportedList}.`
+        ? `"${skillInput.value.trim()}" isn't supported for live camera mode yet. Supported live skills: ${supportedList}.`
+        : `Please type a skill name first. Supported live skills: ${supportedList}.`
     );
     return null;
   }
 
+  const skillConfig = SKILLS[resolvedKey];
   activeSkillConfig = skillConfig;
   isLiveEngineEnabled = true;
 
-  const engineKey = LIVE_ENGINE_SKILL_MAP[skillConfig.key] || skillConfig.key;
+  const engineKey = LIVE_ENGINE_SKILL_MAP[resolvedKey] || resolvedKey;
   engine.setMovement(engineKey);
 
   resetSessionVisuals();
@@ -621,16 +621,16 @@ function hideLiveChrome() {
 
 function populateSkillSwitcher() {
   if (!skillSwitcherList) return;
+  const supported = getSupportedLiveSkills();
+  const activeKey = liveSession.currentSkill || activeSkillConfig?.key;
 
-  skillSwitcherList.innerHTML = Object.entries(SKILL_ANALYZERS).map(([key, skill]) => {
-    const isHold = key.includes("hold") || key.includes("sit") || key.includes("stand") || key.includes("lever") || key.includes("planche") || key.includes("pose");
-    const activeKey = liveSession.currentSkill || activeSkillConfig?.key;
-
+  skillSwitcherList.innerHTML = supported.map((skill) => {
+    const isHold = skill.type === "hold";
     return `
       <label class="skill-option">
-        <input type="radio" name="live-skill" value="${key}" ${key === activeKey ? "checked" : ""} />
+        <input type="radio" name="live-skill" value="${skill.key}" ${skill.key === activeKey ? "checked" : ""} />
         <span class="skill-option-copy">
-          <strong>${escapeHtml(skill.label || key)}</strong>
+          <strong>${escapeHtml(skill.label || skill.key)}</strong>
           <span>${isHold ? "HOLD" : "REPS"}</span>
         </span>
       </label>
@@ -649,25 +649,24 @@ function closeSkillSwitcher() {
 }
 
 function applySkillSwitch(nextSkillKey) {
-  const nextConfig = SKILL_ANALYZERS[nextSkillKey];
-  if (!nextConfig) {
-    alert("Selected skill is not recognized.");
+  const switchResult = liveSession.changeSkill(nextSkillKey);
+  if (switchResult && switchResult.error) {
+    alert(switchResult.error);
     return;
   }
 
   const engineKey = LIVE_ENGINE_SKILL_MAP[nextSkillKey] || nextSkillKey;
   engine.setMovement(engineKey);
 
-  liveSession.currentSkill = nextSkillKey;
-  activeSkillConfig = resolveSkill(nextSkillKey) || { key: nextSkillKey, label: nextConfig.label };
+  activeSkillConfig = SKILLS[nextSkillKey] || { key: nextSkillKey, label: nextSkillKey, type: "rep" };
 
   if (currentSkillBadge) {
-    currentSkillBadge.textContent = nextConfig.label;
+    currentSkillBadge.textContent = activeSkillConfig.label || nextSkillKey;
   }
 
   currentVisualCue = null;
 
-  const isHold = nextSkillKey.includes("hold") || nextSkillKey.includes("sit") || nextSkillKey.includes("stand") || nextSkillKey.includes("lever") || nextSkillKey.includes("planche");
+  const isHold = activeSkillConfig.type === "hold";
   updateLiveCounter({
     type: isHold ? "hold" : "rep",
     reps: 0,
@@ -687,14 +686,29 @@ function escapeHtml(value) {
 
 function renderSessionReport(report) {
   if (!sessionReportBody || !report) return;
-  const segmentsHtml = (report.segmentSummaries || []).map((segment) => `
-    <article class="report-segment">
-      <h3>${escapeHtml(segment.skill)}</h3>
-      <p>${escapeHtml(segment.primaryStat)}</p>
+
+  const noticeHtml = report.feedbackNotice
+    ? `
+    <div class="report-notice warning">
+      <p><strong>Feedback:</strong> ${escapeHtml(report.feedbackNotice)}</p>
+    </div>`
+    : "";
+
+  const segmentsHtml = (report.segmentSummaries || []).map((segment) => {
+    const isUnperformed = !segment.performed;
+    return `
+    <article class="report-segment ${isUnperformed ? "segment-warning" : ""}">
+      <div class="segment-header">
+        <h3>${escapeHtml(segment.skill)}</h3>
+        ${isUnperformed ? `<span class="badge unconfirmed-badge">Not Detected</span>` : `<span class="badge confirmed-badge">Confirmed</span>`}
+      </div>
+      <p><strong>${escapeHtml(segment.primaryStat)}</strong></p>
       <p>Average confidence: ${escapeHtml(segment.confidence)}</p>
-      <p>Main issue: ${escapeHtml(segment.mainIssue)}</p>
+      <p class="${isUnperformed ? "warning-text" : ""}">Main issue: ${escapeHtml(segment.mainIssue)}</p>
+      ${segment.feedbackMessage && isUnperformed ? `<p class="segment-detail-msg">${escapeHtml(segment.feedbackMessage)}</p>` : ""}
     </article>
-  `).join("");
+  `;
+  }).join("");
 
   const focusHtml = (report.focusItems || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 
@@ -703,6 +717,7 @@ function renderSessionReport(report) {
       <p>Session duration: <strong>${escapeHtml(report.durationText)}</strong></p>
       <p>Skills performed: <strong>${escapeHtml((report.skillsPerformed || []).join(", "))}</strong></p>
     </div>
+    ${noticeHtml}
     ${segmentsHtml}
     <h3>Next focus</h3>
     <ul class="report-focus">${focusHtml}</ul>
@@ -771,19 +786,7 @@ goLiveBtn.addEventListener("click", async () => {
 
   liveStream = stream;
 
-  // Force skill properties prior to tracking
-  liveSession.currentSkill = skillConfig.key;
-
-  try {
-    liveSession.start(skillConfig.key);
-  } catch (e) {
-    console.warn("LiveSessionController fallback intercepted:", e);
-  }
-
-  if (liveSession.activeSegment) {
-    liveSession.activeSegment.skillKey = skillConfig.key;
-    liveSession.activeSegment.skillLabel = skillConfig.label;
-  }
+  liveSession.start(skillConfig.key);
 
   if (currentSkillBadge) {
     currentSkillBadge.textContent = skillConfig.label;
@@ -793,7 +796,7 @@ goLiveBtn.addEventListener("click", async () => {
   showLiveChrome();
   startLiveTimer();
 
-  const isHold = skillConfig.key.includes("hold") || skillConfig.key.includes("sit") || skillConfig.key.includes("stand") || skillConfig.key.includes("lever") || skillConfig.key.includes("planche") || skillConfig.key.includes("pose");
+  const isHold = skillConfig.type === "hold";
   updateLiveCounter({
     type: isHold ? "hold" : "rep",
     reps: 0,

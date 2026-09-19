@@ -107,7 +107,13 @@ export class LsitEvaluator extends BaseHoldEvaluator {
     if (hipAng > 105 || hipElevationDelta < -0.02) faults.push('hips_dropping');
     if (legExt < 155) faults.push('knee_bend');
 
-    const formQuality = Math.max(0, Math.min(1, ((armLock / 180) * 0.3 + (1 - Math.abs(hipAng - 90)/50) * 0.4 + stability * 0.3)));
+    let formQuality = Math.max(0, Math.min(1, ((armLock / 180) * 0.25 + (1 - Math.abs(hipAng - 90)/50) * 0.35 + (legExt / 180) * 0.25 + stability * 0.15)));
+    if (faults.includes('knee_bend')) {
+      formQuality = Math.min(formQuality, 0.60);
+    }
+    if (faults.includes('hips_dropping')) {
+      formQuality = Math.min(formQuality, 0.55);
+    }
 
     return {
       skill: 'lsit', type: 'hold', poseConfidence: confidence,
@@ -160,26 +166,32 @@ export class HandstandEvaluator extends BaseHoldEvaluator {
     const isHipAboveShoulder = hip.y < shoulder.y - 0.05;
     const isAnkleAboveHip = ankle.y < hip.y - 0.05;
 
+    let inversion = 0;
+    if (isShoulderAboveWrist && isHipAboveShoulder) {
+      inversion = isAnkleAboveHip ? 1.0 : 0.7;
+    }
+
     const armLock = angle(wrist, elbow, shoulder);
     const line = bodyLine(shoulder, hip, ankle);
     const stability = this.computeStability(shoulder);
 
-    let likelihood = 0.0;
-    if (isShoulderAboveWrist && isHipAboveShoulder) {
-      likelihood += 0.6;
-      if (isAnkleAboveHip) likelihood += 0.4;
-    }
+    const likelihood = inversion;
 
     const faults = [];
-    if (armLock < 165) faults.push('bent_arms');
-    if (line.deviation > 15) faults.push(line.isPike ? 'hip_pike' : 'hip_arch');
+    if (inversion > 0) {
+      if (armLock < 165) faults.push('bent_arms');
+      if (line.deviation > 15) faults.push(line.isPike ? 'hip_pike' : 'hip_arch');
+    }
 
-    const formQuality = Math.max(0, Math.min(1, (armLock / 180) * 0.4 + (1 - line.deviation / 35) * 0.4 + stability * 0.2));
+    let formQuality = 0.1;
+    if (inversion > 0) {
+      formQuality = Math.max(0, Math.min(1, (armLock / 180) * 0.4 + (1 - line.deviation / 35) * 0.4 + stability * 0.2)) * inversion;
+    }
 
     return {
       skill: 'handstand', type: 'hold', poseConfidence: confidence,
       skillLikelihood: likelihood, formQuality,
-      metrics: { armLockout: Math.round(armLock), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
+      metrics: { inversion, armLockout: Math.round(armLock), bodyLineDeviation: Math.round(line.deviation), bodyLineDev: Math.round(line.deviation), stability: Math.round(stability * 100) / 100 },
       faults
     };
   }

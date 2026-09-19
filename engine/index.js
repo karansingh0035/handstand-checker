@@ -30,7 +30,8 @@ import {
   getSupportedLiveSkills,
   isSupportedLiveSkill,
   formatDuration,
-  formatFaultLabel
+  formatFaultLabel,
+  validateSegmentPerformance
 } from './session-manager.js';
 
 export {
@@ -58,7 +59,8 @@ export {
   getSupportedLiveSkills,
   isSupportedLiveSkill,
   formatDuration,
-  formatFaultLabel
+  formatFaultLabel,
+  validateSegmentPerformance
 };
 
 let cachedVoice = null;
