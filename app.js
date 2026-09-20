@@ -217,7 +217,34 @@ function onPoseResults(results) {
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
+  // 🆕 REAL FIX for the short/mostly-black live canvas: this was using
+  // Math.min (a "contain" fit) unconditionally. Contain preserves the
+  // WHOLE source frame by scaling to fit inside the destination box,
+  // letterboxing whichever axis doesn't match — which is correct for
+  // upload mode (canvas is sized to the video's own dimensions, so
+  // contain/cover are equivalent there), but wrong for live mode: a
+  // phone's rear camera very often hands getUserMedia a LANDSCAPE-shaped
+  // frame (e.g. 1280x720) regardless of the portrait `ideal` hint
+  // requested above — ideal is only ever a hint, hardware/OS can and does
+  // ignore it — while canvasWidth/canvasHeight are now correctly tall
+  // (portrait, matching the wrapper's CSS box). Containing a landscape
+  // source inside a tall portrait box necessarily leaves a large empty
+  // gap on whichever axis has room to spare — that's not a bug in the
+  // math, it's just what "contain" does when the shapes genuinely differ
+  // this much. Every earlier fix attempt (see comments above/below)
+  // correctly fixed the CONTAINER's shape but never addressed that the
+  // video CONTENT is a different shape than the container, which contain
+  // will always letterbox on principle.
+  // A live camera view should behave like a normal camera app: fill the
+  // box, crop the sides evenly if needed — a "cover" fit (Math.max
+  // instead of Math.min). Upload mode keeps "contain" since the canvas
+  // there is already sized to exactly match the video's own dimensions
+  // (see beginFrameProcessing's else-branch), so cover vs. contain is a
+  // no-op there either way — preserving the "identical behavior to
+  // before" guarantee the comment below describes for that path.
+  const fitScale = (isLiveSessionMode
+    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
+    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
   const drawWidth = sourceWidth * fitScale;
   const drawHeight = sourceHeight * fitScale;
   const offsetX = (canvasWidth - drawWidth) / 2;
