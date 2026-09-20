@@ -276,6 +276,39 @@ export const MOVEMENT_RULES = {
       cue: "Lower under control.",
       check: (metrics) => metrics.conS < 1.0
     }
+  ],
+
+  pseudoplanchepushup: [
+    {
+      id: 'pppu_hip_sag',
+      priority: PRIORITY.SAFETY,
+      cue: "Squeeze your glutes — one straight line.",
+      check: (metrics) => metrics.bodyLineDeviation > 12 && metrics.isSag
+    },
+    {
+      id: 'pppu_hip_pike',
+      priority: PRIORITY.EFFICIENCY,
+      cue: "Drop your hips into line.",
+      check: (metrics) => metrics.bodyLineDeviation > 12 && metrics.isPike
+    },
+    {
+      id: 'pppu_insufficient_lean',
+      priority: PRIORITY.ROM,
+      cue: "Lean further forward — shoulders past your hands.",
+      check: (metrics) => metrics.shoulderLean < 0.15
+    },
+    {
+      id: 'pppu_no_lockout',
+      priority: PRIORITY.ROM,
+      cue: "Finish tall — straighten your arms.",
+      check: (metrics) => metrics.maxElbowAngle < 160
+    },
+    {
+      id: 'pppu_rushing',
+      priority: PRIORITY.TEMPO,
+      cue: "Slow the way down — control the lean.",
+      check: (metrics) => metrics.eccS < 0.7
+    }
   ]
 };
 

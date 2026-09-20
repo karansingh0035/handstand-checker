@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CaliXAi-form check</title>
+    <title>CaliXAi — AI Form Coaching</title>
     <link rel="stylesheet" href="style.css" />
     <script
       src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
@@ -13,12 +13,12 @@
       src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
       crossorigin="anonymous"
     ></script>
-    <!-- ✅ Match the version explicitly here as well -->
+    <!-- Match the version explicitly here as well -->
     <script
       src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"
       crossorigin="anonymous"
     ></script>
-       <script src="skills/pose-utils.js" defer></script>
+    <script src="skills/pose-utils.js" defer></script>
     <script src="skills/handstand.js" defer></script>
     <script src="skills/pushup.js" defer></script>
     <script src="skills/lsit.js" defer></script>
@@ -48,67 +48,155 @@
           (window.vaq = window.vaq || []).push(arguments);
         };
     </script>
-<!-- Replace the static script tag with this inline check -->
-<script>
-  if (window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
-    const s = document.createElement('script');
-    s.defer = true;
-    s.src = '/_vercel/insights/script.js';
-    document.head.appendChild(s);
-  }
-</script>
+    <script>
+      if (window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
+        const s = document.createElement('script');
+        s.defer = true;
+        s.src = '/_vercel/insights/script.js';
+        document.head.appendChild(s);
+      }
+    </script>
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
   </head>
-  <body>
-    <!-- 🍿 Cinematic Background Video Layer -->
+  <body data-section="home">
+    <!-- Cinematic Background Video Layer (persists across all sections) -->
     <video id="bg-video" autoplay loop muted playsinline>
-      <!-- High-quality free calisthenics/workout video placeholder -->
-      <source
-        src="video.mp4"
-        type="video/mp4"
-      />
+      <source src="video.mp4" type="video/mp4" />
       Your browser does not support the video tag.
     </video>
-    <div class="container">
+
+    <!-- ======================= TOP NAVIGATION ======================= -->
+    <header class="app-header">
+      <div class="app-header-inner">
+        <div class="brand">CaliX<span class="accent">Ai</span></div>
+        <nav class="app-nav" id="app-nav">
+          <button type="button" class="nav-btn is-active" id="nav-home" data-target="home">Home</button>
+          <button type="button" class="nav-btn" id="nav-live" data-target="live">Live Training</button>
+          <button type="button" class="nav-btn" id="nav-video" data-target="video">Video Analysis</button>
+          <button type="button" class="nav-btn" id="nav-progress" data-target="progress">Progress</button>
+        </nav>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- ======================= SECTION: HOME ======================= -->
+      <section class="app-section" id="section-home">
+        <div class="hero">
+          <h1 class="hero-title">AI Biomechanics &amp;<br />Form Coaching</h1>
+          <p class="hero-sub">
+            Real-time pose analysis for calisthenics. Get live audio cues while you train,
+            or upload a clip for a detailed breakdown of your form.
+          </p>
+          <div class="hero-actions">
+            <button type="button" class="cta-btn primary" data-goto="live">Start Live Training</button>
+            <button type="button" class="cta-btn secondary" data-goto="video">Analyze a Video</button>
+          </div>
+        </div>
+
+        <h2 class="section-heading">Recording best practices</h2>
+        <div class="guideline-grid">
+          <article class="guideline-card">
+            <div class="guideline-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" />
+              </svg>
+            </div>
+            <h3>Lighting &amp; contrast</h3>
+            <p>Put your light source in front of you, not behind. Backlit silhouettes lose landmark tracking fast.</p>
+          </article>
+          <article class="guideline-card">
+            <div class="guideline-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 20h18" />
+                <path d="M7 20V9l7-5v16" />
+                <path d="M14 20V11l4-3v12" />
+              </svg>
+            </div>
+            <h3>Camera angle</h3>
+            <p>A clean 90&deg; side profile is what lets the engine measure depth, lockout, and body line correctly.</p>
+          </article>
+          <article class="guideline-card">
+            <div class="guideline-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 3v18M15 3v18" />
+              </svg>
+            </div>
+            <h3>Full body in frame</h3>
+            <p>Head to toes visible through the entire range of motion &mdash; partial framing is the top cause of rejected clips.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ======================= SECTION: LIVE TRAINING ======================= -->
+      <section class="app-section" id="section-live">
+        <h2 class="section-heading">Live training</h2>
+        <p class="section-sub">
+          Pick a skill, go live, and get spoken cues as you work. You can switch skills mid-session
+          without restarting the camera.
+        </p>
+        <div class="skill-chip-row" id="live-skill-chips"></div>
+        <!-- Shared workspace gets mounted here when this section is active -->
+        <div class="section-mount" id="live-mount"></div>
+      </section>
+
+      <!-- ======================= SECTION: VIDEO ANALYSIS ======================= -->
+      <section class="app-section" id="section-video">
+        <h2 class="section-heading">Video analysis</h2>
+        <p class="section-sub">
+          Upload a clip, name the skill, and get a form score plus AI coaching insights.
+        </p>
+        <!-- Shared workspace gets mounted here when this section is active -->
+        <div class="section-mount" id="video-mount"></div>
+      </section>
+
+      <!-- ======================= SECTION: PROGRESS ======================= -->
+      <section class="app-section" id="section-progress">
+        <h2 class="section-heading">Progress</h2>
+        <p class="section-sub">
+          Built from live sessions you have completed on this device. Nothing is uploaded anywhere.
+        </p>
+        <div id="progress-content"></div>
+      </section>
+    </main>
+
+    <!-- =================================================================
+         SHARED WORKSPACE
+         Single instance of every element app.js binds to. The router in
+         app.js MOVES this whole block into #live-mount or #video-mount
+         depending on the active section. Moving (appendChild) preserves
+         node identity, IDs, and attached event listeners, so none of the
+         existing app.js wiring needs to change.
+         ================================================================= -->
+    <div id="shared-workspace">
       <div class="text">
         <span>Check your form</span>
       </div>
       <div class="upload-bar">
         <div class="box" id="main-box">
-          <!-- 🎞️ THE VIDEO THUMBNAIL CAPSULE (Hidden by default) -->
-          <div
-            class="preview-container"
-            id="preview-container"
-            style="display: none"
-          >
+          <!-- THE VIDEO THUMBNAIL CAPSULE (Hidden by default) -->
+          <div class="preview-container" id="preview-container" style="display: none">
             <div class="thumbnail-wrapper">
               <video id="preview-video" muted></video>
-              <button type="button" class="remove-btn" id="remove-btn">
-                &times;
-              </button>
+              <button type="button" class="remove-btn" id="remove-btn">&times;</button>
             </div>
           </div>
 
-          <!-- 🛠️ THE BOTTOM INTERACTION ROW -->
+          <!-- THE BOTTOM INTERACTION ROW -->
           <div class="input-row">
-            <button
-              type="button"
-              class="icon-btn"
-              id="plus"
-              aria-label="Add video"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-              >
+            <button type="button" class="icon-btn" id="plus" aria-label="Add video">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -117,52 +205,20 @@
               type="text"
               id="skill-input"
               class="text2"
-              placeholder="Name of your skill eg. handstand,lsit,etc."
+              placeholder="Name of your skill eg. handstand, lsit, etc."
               autocomplete="off"
             />
-            <input
-              type="file"
-              id="hidden-video-input"
-              accept="video/*"
-              style="display: none"
-            />
-            <!-- 🆕 LIVE CAMERA MODE TRIGGER -->
-            <button
-              type="button"
-              class="icon-btn"
-              id="go-live"
-              aria-label="Start live coaching"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
+            <input type="file" id="hidden-video-input" accept="video/*" style="display: none" />
+            <!-- LIVE CAMERA MODE TRIGGER -->
+            <button type="button" class="icon-btn" id="go-live" aria-label="Start live coaching">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M12 5V3M12 21v-2M5 12H3M21 12h-2" />
               </svg>
+              <span class="go-live-label">Go Live</span>
             </button>
-            <button
-              type="button"
-              class="icon-btn"
-              id="upload"
-              aria-label="Upload and scan"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
+            <button type="button" class="icon-btn" id="upload" aria-label="Upload and scan">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5" />
                 <polyline points="5 12 12 5 19 12" />
               </svg>
@@ -170,26 +226,48 @@
           </div>
         </div>
       </div>
-      <div
-        class="analysis-workspace"
-        id="analysis-workspace"
-        style="display: none"
-      >
+
+      <div class="analysis-workspace" id="analysis-workspace" style="display: none">
         <div class="canvas-wrapper">
-          <!-- 🆕 LIVE SESSION STOP CONTROL — floats over the feed, hidden
-               until a live session starts (shown/hidden via app.js) -->
-          <button
-            type="button"
-            class="icon-btn"
-            id="stop-live"
-            aria-label="Stop live session"
-            style="display: none"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-          </button>
-          <!-- The visual canvas overlay layer where we will draw tracking lines -->
+          <div class="live-toolbar" id="live-toolbar" hidden>
+            <div class="live-toolbar-left">
+              <span id="session-timer" class="session-timer-badge">00:00</span>
+              <span id="current-skill-badge" class="live-skill-badge">Push-up</span>
+              <span id="rep-count" class="live-counter-badge">0</span>
+            </div>
+            <div class="live-toolbar-right">
+              <button type="button" class="live-tool-btn" id="change-skill-btn" aria-label="Change skill">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h11" />
+                  <path d="M4 17h11" />
+                  <path d="M15 7l3-3 3 3" />
+                  <path d="M15 17l3 3 3-3" />
+                </svg>
+                <span>Change Skill</span>
+              </button>
+              <button type="button" class="icon-btn live-icon-btn" id="pause-live-btn" aria-label="Pause live session">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              </button>
+              <button type="button" class="icon-btn live-icon-btn" id="mute-live-btn" aria-label="Mute audio cues">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M19 6a9 9 0 0 1 0 12" />
+                </svg>
+              </button>
+              <button type="button" class="icon-btn" id="stop-live" aria-label="End live session">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="pause-overlay" id="pause-overlay" hidden>
+            <span>Paused</span>
+          </div>
           <canvas id="analysis-canvas"></canvas>
         </div>
         <div class="dashboard-row">
@@ -197,8 +275,7 @@
           <div class="data-card score-card">
             <span class="card-label">FORM SCORE</span>
             <div class="score-display">
-              <span id="form-score-value">--</span
-              ><span class="score-total">/100</span>
+              <span id="form-score-value">--</span><span class="score-total">/100</span>
             </div>
           </div>
 
@@ -209,6 +286,35 @@
               Awaiting video upload to run biomechanical analysis...
             </p>
           </div>
+        </div>
+
+        <!-- Shown once an uploaded-video analysis finishes (success or
+             rejection), so a new clip can be tried without reloading. -->
+        <button type="button" class="cta-btn primary next-video-btn" id="next-video-btn" hidden>
+          Next Video
+        </button>
+      </div>
+    </div>
+
+    <!-- ======================= MODALS ======================= -->
+    <div class="modal-backdrop" id="skill-switcher-modal" hidden>
+      <div class="modal-card" role="dialog" aria-labelledby="skill-switcher-title" aria-modal="true">
+        <h2 id="skill-switcher-title">Change skill</h2>
+        <p class="modal-copy">Pick the next live skill. Your camera, session timer, and previous segments stay running.</p>
+        <div class="skill-card-list" id="skill-switcher-list"></div>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn secondary" id="cancel-skill-switch">Cancel</button>
+          <button type="button" class="modal-btn primary" id="confirm-skill-switch">Switch Skill</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="session-report-modal" hidden>
+      <div class="modal-card report-card" role="dialog" aria-labelledby="session-report-title" aria-modal="true">
+        <h2 id="session-report-title">Session report</h2>
+        <div id="session-report-body"></div>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn primary" id="close-session-report">Close &amp; New Workout</button>
         </div>
       </div>
     </div>

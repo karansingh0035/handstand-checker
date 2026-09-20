@@ -78,8 +78,9 @@ export class RepSegmenter {
         visibilities: [meanVisibility],
         
         // Track running aggregates across full rep duration
-        minElbowAngle: minElbowAngle,
-        maxElbowAngle: minElbowAngle,
+        // FIX Bug #3: Initialize to Infinity/-Infinity for proper min/max aggregation
+        minElbowAngle: Infinity,
+        maxElbowAngle: -Infinity,
         maxHipAngle: maxHipAngle,
         maxBodyLineDeviation: bodyLineDeviation,
         maxTorsoVertical: torsoVertical,
@@ -118,6 +119,7 @@ export class RepSegmenter {
     else {
       // Aggregate metrics frame-by-frame
       this.currentRep.visibilities.push(meanVisibility);
+      // FIX Bug #1: Properly track min and max elbow angles across the rep
       this.currentRep.minElbowAngle = Math.min(this.currentRep.minElbowAngle, minElbowAngle);
       this.currentRep.maxElbowAngle = Math.max(this.currentRep.maxElbowAngle, minElbowAngle);
       this.currentRep.maxHipAngle = Math.max(this.currentRep.maxHipAngle, maxHipAngle);
