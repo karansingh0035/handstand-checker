@@ -393,9 +393,8 @@ function beginFrameProcessing() {
   const nativeWidth = processingVideoElement.videoWidth;
   const nativeHeight = processingVideoElement.videoHeight;
 
-  // Downscale canvas to 400px max for instant 60fps real-time inference on mobile
-  const MAX_CANVAS_WIDTH = 400;
-  const MAX_CANVAS_HEIGHT = 400;
+  const MAX_CANVAS_WIDTH = 640;
+  const MAX_CANVAS_HEIGHT = 640;
 
   const scale = Math.min(
     1,
@@ -405,7 +404,21 @@ function beginFrameProcessing() {
 
   analysisCanvas.width = Math.round(nativeWidth * scale);
   analysisCanvas.height = Math.round(nativeHeight * scale);
-  canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
+
+  // Upload mode: lock the box to the video's real aspect ratio, as before.
+  // Live mode: DON'T — camera-reported dimensions are unreliable across
+  // devices (many phones report the sensor's landscape-native orientation
+  // even when we request portrait via getUserMedia's `ideal` hint), which
+  // was squishing the on-screen box short regardless of how the phone was
+  // actually held. Live mode instead gets a fixed tall box from CSS
+  // (body.live-active .canvas-wrapper), and #analysis-canvas's
+  // object-fit: contain letterboxes the actual frame content inside it
+  // without stretching, whatever aspect ratio the camera really is.
+  if (!isLiveSessionMode) {
+    canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
+  } else {
+    canvasWrapper.style.aspectRatio = "";
+  }
 
   if (!poseEngine) {
     initMediaPipe();
@@ -741,8 +754,6 @@ function resetToHome() {
 
 // 5️⃣ SINGLE SOURCE OF TRUTH: UPLOADED VIDEO ENGINE ANALYSIS
 uploadBtn.addEventListener("click", () => {
-  warmUpSpeech();
-
   if (!uploadedVideoFile) {
     alert("Please click the '+' button to select a form video first!");
     return;
@@ -959,12 +970,17 @@ function setSection(target) {
   }
 
   // The canvas was sized while possibly hidden; re-sync it on reveal.
-  if ((target === "live" || target === "video") && processingVideoElement) {
+  // Same live-vs-upload split as beginFrameProcessing: live mode must NOT
+  // get locked to the camera's raw (unreliable) aspect ratio here either,
+  // or switching back into the Live tab would silently re-break the box.
+  if (target === "video" && processingVideoElement) {
     const w = processingVideoElement.videoWidth;
     const h = processingVideoElement.videoHeight;
     if (w && h) {
       canvasWrapper.style.aspectRatio = `${w} / ${h}`;
     }
+  } else if (target === "live") {
+    canvasWrapper.style.aspectRatio = "";
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });

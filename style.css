@@ -1194,9 +1194,28 @@ body.live-active #section-live .section-sub {
 /* Give the canvas the full stage while training */
 body.live-active .app-main { padding-top: 16px; }
 
-body.live-active .canvas-wrapper,
-body.live-active #analysis-canvas {
-  max-height: 78vh;
+body.live-active .canvas-wrapper {
+  /* height (a concrete length), not aspect-ratio — this is the actual fix.
+     aspect-ratio locks box SHAPE to a ratio; on many phones the camera
+     reports landscape dimensions regardless of the portrait 'ideal' hint
+     we request, which squished this box short. A fixed height doesn't
+     care what shape the camera reports. */
+  aspect-ratio: unset;
+  height: 72vh;
+  max-height: 72vh;
+}
+
+#analysis-canvas {
+  /* Letterboxes the drawn frame inside its box without stretching,
+     whatever the camera's real aspect ratio turns out to be. */
+  object-fit: contain;
+}
+
+/* #next-video-btn is a sibling of .dashboard-row, not a child of it, so
+   the existing dashboardRow.style.display = "none" in prepareLiveSession()
+   never reached it — it was leaking into every live session. */
+body.live-active #next-video-btn {
+  display: none;
 }
 
 /* --- Next Video button (upload flow only) --------------------------------- */
