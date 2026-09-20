@@ -194,11 +194,49 @@ function onPoseResults(results) {
   const imageSource = results.image || (processingVideoElement && processingVideoElement.readyState >= 2 ? processingVideoElement : null);
   if (!imageSource) return;
 
-  ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
+  const canvasWidth = analysisCanvas.width;
+  const canvasHeight = analysisCanvas.height;
+
+  // 🆕 FIX: previously this was an unconditional
+  // drawImage(imageSource, 0, 0, canvasWidth, canvasHeight) — a hard
+  // stretch to fill the canvas regardless of the source's real aspect
+  // ratio. That was invisible in upload mode (the canvas bitmap is sized
+  // to exactly match the video's native dimensions there, so "stretch"
+  // and "fit" happen to be the same thing) but broke live mode once the
+  // canvas bitmap stopped being tied to the camera's native resolution
+  // (see beginFrameProcessing) — relying on CSS object-fit to fix it
+  // after the fact turned out to be inconsistent for canvas specifically,
+  // and it also wouldn't have kept the skeleton overlay aligned with the
+  // now-repositioned video image anyway. This computes a manual
+  // "contain" fit (preserve aspect ratio, center, letterbox) and applies
+  // the exact same transform to the skeleton draw calls below, so both
+  // land in the same place. In upload mode this scale works out to
+  // exactly 1 with a zero offset — identical behavior to before.
+  const sourceWidth = imageSource.videoWidth || imageSource.width || canvasWidth;
+  const sourceHeight = imageSource.videoHeight || imageSource.height || canvasHeight;
+
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
+  const drawWidth = sourceWidth * fitScale;
+  const drawHeight = sourceHeight * fitScale;
+  const offsetX = (canvasWidth - drawWidth) / 2;
+  const offsetY = (canvasHeight - drawHeight) / 2;
+  const letterboxTransform = [drawWidth / canvasWidth, 0, 0, drawHeight / canvasHeight, offsetX, offsetY];
+
+  ctx.save();
+  // drawing_utils' drawConnectors/drawLandmarks (and the drawImage call
+  // right below) all compute positions as fractions of ctx.canvas.width/
+  // height — this transform remaps that "full canvas" coordinate space
+  // onto the actual letterboxed rectangle, so the video image and the
+  // skeleton land in exactly the same place without needing to touch
+  // drawing_utils itself.
+  ctx.setTransform(...letterboxTransform);
 
   try {
-    ctx.drawImage(imageSource, 0, 0, analysisCanvas.width, analysisCanvas.height);
+    ctx.drawImage(imageSource, 0, 0, canvasWidth, canvasHeight);
   } catch (err) {
+    ctx.restore();
     return;
   }
 
@@ -236,7 +274,15 @@ function onPoseResults(results) {
         }
 
         if (currentVisualCue) {
+          // 🆕 The cue banner is UI chrome, not part of the video/skeleton
+          // — it must stay in real screen-pixel space regardless of the
+          // letterbox transform above, or its font size and position
+          // would shift with whatever resolution the camera happens to
+          // report. Drop to identity just for this draw, then restore the
+          // letterbox transform for the skeleton below.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
           drawCueOverlay(ctx, currentVisualCue);
+          ctx.setTransform(...letterboxTransform);
         }
       }
     } else {
@@ -257,6 +303,8 @@ function onPoseResults(results) {
       radius: 4
     });
   }
+
+  ctx.restore();
 }
 
 // Bug #9 Fix: Safe roundRect polyfill fallback
@@ -396,28 +444,30 @@ function beginFrameProcessing() {
   const MAX_CANVAS_WIDTH = 640;
   const MAX_CANVAS_HEIGHT = 640;
 
-  const scale = Math.min(
-    1,
-    MAX_CANVAS_WIDTH / nativeWidth,
-    MAX_CANVAS_HEIGHT / nativeHeight
-  );
-
-  analysisCanvas.width = Math.round(nativeWidth * scale);
-  analysisCanvas.height = Math.round(nativeHeight * scale);
-
-  // Upload mode: lock the box to the video's real aspect ratio, as before.
-  // Live mode: DON'T — camera-reported dimensions are unreliable across
-  // devices (many phones report the sensor's landscape-native orientation
-  // even when we request portrait via getUserMedia's `ideal` hint), which
-  // was squishing the on-screen box short regardless of how the phone was
-  // actually held. Live mode instead gets a fixed tall box from CSS
-  // (body.live-active .canvas-wrapper), and #analysis-canvas's
-  // object-fit: contain letterboxes the actual frame content inside it
-  // without stretching, whatever aspect ratio the camera really is.
-  if (!isLiveSessionMode) {
-    canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
-  } else {
+  if (isLiveSessionMode) {
+    // 🆕 FIX: previously this branch still sized the canvas BITMAP to the
+    // camera's native resolution (nativeWidth/nativeHeight) even though
+    // the wrapper's on-screen box shape is fixed by CSS
+    // (body.live-active .canvas-wrapper's 72vh height) and ignores that
+    // resolution entirely. That mismatch — a landscape-shaped bitmap
+    // (e.g. 640x360) displayed inside a tall 72vh box — is exactly what
+    // produced a short strip of video pinned in one corner with a large
+    // empty gap in the rest of the box. The canvas bitmap is now sized to
+    // match the WRAPPER'S OWN rendered box instead, and onPoseResults
+    // manually letterboxes the actual video frame (whatever shape it
+    // turns out to be) inside that bitmap — so the box size no longer
+    // depends on the camera's reported resolution at all.
+    const rect = canvasWrapper.getBoundingClientRect();
+    const boxScale = Math.min(1, MAX_CANVAS_WIDTH / rect.width, MAX_CANVAS_HEIGHT / rect.height);
+    analysisCanvas.width = Math.max(1, Math.round(rect.width * boxScale));
+    analysisCanvas.height = Math.max(1, Math.round(rect.height * boxScale));
     canvasWrapper.style.aspectRatio = "";
+  } else {
+    // Upload mode: lock the box to the video's real aspect ratio, as before.
+    const scale = Math.min(1, MAX_CANVAS_WIDTH / nativeWidth, MAX_CANVAS_HEIGHT / nativeHeight);
+    analysisCanvas.width = Math.round(nativeWidth * scale);
+    analysisCanvas.height = Math.round(nativeHeight * scale);
+    canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
   }
 
   if (!poseEngine) {

@@ -1205,9 +1205,23 @@ body.live-active .canvas-wrapper {
   max-height: 72vh;
 }
 
+/* 🆕 FIX: #analysis-canvas's own base rule elsewhere in this file still
+   caps it at max-height: 60vh — shorter than this 72vh wrapper — which
+   left a real gap between the (correctly sized) wrapper and the shorter
+   canvas inside it. This override matches the two. */
+body.live-active #analysis-canvas {
+  max-height: 72vh;
+}
+
 #analysis-canvas {
-  /* Letterboxes the drawn frame inside its box without stretching,
-     whatever the camera's real aspect ratio turns out to be. */
+  /* 🆕 The actual fix for the video/skeleton misalignment is now manual —
+     app.js's onPoseResults computes a "contain" fit and applies the same
+     transform to both the drawn frame and the skeleton overlay. This
+     object-fit rule is kept as a harmless backstop (canvas support for
+     object-fit is inconsistent across mobile browser engines, and it's
+     effectively a no-op here anyway once the JS fix sizes the canvas
+     bitmap to already match its CSS box's aspect ratio) rather than the
+     primary fix. */
   object-fit: contain;
 }
 
