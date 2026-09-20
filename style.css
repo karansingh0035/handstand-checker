@@ -650,3 +650,558 @@ body::before {
     gap: 10px;
   }
 }
+/* ==========================================================================
+   7️⃣ MULTI-SECTION SHELL — TOP NAV, SECTIONS, HOME, PROGRESS
+   Added for the 4-section redesign. Everything above this block is the
+   original styling and is still used by the shared workspace.
+   ========================================================================== */
+
+/* --- Body layout override: the shell manages its own vertical flow ------- */
+body {
+  display: block;                 /* was flex-centered; sections handle layout now */
+  align-items: initial;
+  justify-content: initial;
+  padding-top: 72px;              /* clears the fixed header */
+}
+
+/* --- Sticky glassmorphic header ----------------------------------------- */
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(12, 12, 12, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.app-header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.brand .accent { color: #ff5a1f; }
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.62);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 9px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.nav-btn:hover { color: #ffffff; }
+
+.nav-btn.is-active {
+  color: #ffffff;
+  background: rgba(255, 90, 31, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 90, 31, 0.45);
+}
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 6px;
+  margin-left: auto;
+}
+
+/* --- Section switching --------------------------------------------------- */
+.app-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+.app-section { display: none; }
+
+body[data-section="home"]     #section-home,
+body[data-section="live"]     #section-live,
+body[data-section="video"]    #section-video,
+body[data-section="progress"] #section-progress {
+  display: block;
+  animation: sectionFade 0.28s ease;
+}
+
+@keyframes sectionFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* The shared workspace is parked here when no section owns it. */
+#shared-workspace:not(.is-mounted) { display: none; }
+
+.section-mount { width: 100%; }
+
+/* Contextual controls: hide the buttons that do not belong to the section. */
+body[data-section="live"]  #plus,
+body[data-section="live"]  #upload,
+body[data-section="video"] #go-live {
+  display: none;
+}
+
+/* --- Shared headings ----------------------------------------------------- */
+.section-heading {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.section-sub {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  margin-bottom: 28px;
+  max-width: 620px;
+}
+
+/* --- Home: hero ---------------------------------------------------------- */
+.hero { padding: 40px 0 56px; }
+
+.hero-title {
+  font-size: 3.2rem;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+.hero-sub {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  max-width: 560px;
+  margin-bottom: 32px;
+}
+
+.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+
+.cta-btn {
+  font-family: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+  padding: 14px 26px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.cta-btn:active { transform: scale(0.97); }
+
+.cta-btn.primary {
+  background: #ff5a1f;
+  color: #ffffff;
+}
+
+.cta-btn.primary:hover {
+  box-shadow: 0 0 26px rgba(255, 90, 31, 0.5);
+}
+
+.cta-btn.secondary {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.cta-btn.secondary:hover { background: rgba(255, 255, 255, 0.13); }
+
+/* --- Home: guideline cards ---------------------------------------------- */
+.guideline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.guideline-card {
+  background-color: rgba(15, 15, 15, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.guideline-card:hover {
+  border-color: rgba(255, 90, 31, 0.4);
+  transform: translateY(-2px);
+}
+
+.guideline-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 90, 31, 0.14);
+  color: #ff5a1f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.guideline-card h3 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.guideline-card p {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* --- Live: skill chips --------------------------------------------------- */
+.skill-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.skill-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.78);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 15px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.skill-chip:hover {
+  border-color: rgba(255, 90, 31, 0.5);
+  color: #ffffff;
+}
+
+.skill-chip.is-selected {
+  background: rgba(255, 90, 31, 0.18);
+  border-color: #ff5a1f;
+  color: #ffffff;
+}
+
+/* --- Progress dashboard -------------------------------------------------- */
+.progress-empty {
+  background-color: rgba(15, 15, 15, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 48px 28px;
+  text-align: center;
+}
+
+.progress-empty h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.progress-empty p {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.94rem;
+  line-height: 1.6;
+  max-width: 420px;
+  margin: 0 auto 22px;
+}
+
+.metric-banner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.metric-tile {
+  background-color: rgba(15, 15, 15, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.metric-tile .metric-value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: #ff5a1f;
+  line-height: 1.1;
+}
+
+.metric-tile .metric-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #888888;
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+
+.mastery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.mastery-card {
+  background-color: rgba(15, 15, 15, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.mastery-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.mastery-head h4 { font-size: 1rem; font-weight: 600; }
+
+.mastery-best {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ff5a1f;
+  white-space: nowrap;
+}
+
+.mastery-meta {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 12px;
+}
+
+.mastery-fault {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.62);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.session-list {
+  background-color: rgba(15, 15, 15, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.9rem;
+}
+
+.session-row:last-child { border-bottom: none; }
+
+.session-row .session-date { color: rgba(255, 255, 255, 0.5); }
+
+.session-row .session-skills {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.text-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.65);
+  font-family: inherit;
+  font-size: 0.86rem;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.text-btn:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* --- Mobile -------------------------------------------------------------- */
+@media (max-width: 760px) {
+  body { padding-top: 64px; }
+
+  .app-header-inner { height: 64px; padding: 0 16px; gap: 12px; }
+
+  .nav-toggle { display: block; }
+
+  .app-nav {
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px;
+    margin-left: 0;
+    background: rgba(12, 12, 12, 0.97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: none;
+  }
+
+  .app-nav.is-open { display: flex; }
+
+  .nav-btn { text-align: left; border-radius: 10px; padding: 13px 16px; }
+
+  .app-main { padding: 28px 16px 60px; }
+
+  .hero { padding: 20px 0 40px; }
+
+  .hero-title { font-size: 2.1rem; }
+
+  .hero-sub { font-size: 0.98rem; }
+
+  .cta-btn { flex: 1; text-align: center; }
+
+  .section-heading { font-size: 1.35rem; }
+}
+
+/* ==========================================================================
+   8️⃣ LIVE SECTION CHROME — focused "Go Live" control + in-session cleanup
+   ========================================================================== */
+
+/* "CHECK YOUR FORM" is redundant now that each section has its own heading.
+   The node stays in the DOM because app.js toggles mainTitle.style.display;
+   !important beats that inline style so it stays hidden either way. */
+.text { display: none !important; }
+
+/* --- Live section: single glowing Go Live button, no text input ---------- */
+.go-live-label { display: none; }
+
+body[data-section="live"] #skill-input,
+body[data-section="live"] #preview-container {
+  display: none !important;
+}
+
+/* Strip the card chrome so the button stands alone */
+body[data-section="live"] .box {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+body[data-section="live"] .box:hover {
+  border: none;
+  box-shadow: none;
+}
+
+body[data-section="live"] .input-row {
+  justify-content: flex-start;
+}
+
+body[data-section="live"] #go-live {
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  gap: 10px;
+  padding: 16px 34px;
+  background: #ff5a1f;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 0 28px rgba(255, 90, 31, 0.45);
+  animation: goLivePulse 2.4s ease-in-out infinite;
+}
+
+body[data-section="live"] #go-live:hover {
+  background: #ff6a33;
+  box-shadow: 0 0 40px rgba(255, 90, 31, 0.7);
+  transform: scale(1.03);
+}
+
+body[data-section="live"] .go-live-label { display: inline; }
+
+@keyframes goLivePulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(255, 90, 31, 0.38); }
+  50%      { box-shadow: 0 0 40px rgba(255, 90, 31, 0.68); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-section="live"] #go-live { animation: none; }
+}
+
+/* --- Once a session is running, clear everything above the canvas -------- */
+body.live-active #live-skill-chips,
+body.live-active #section-live .section-heading,
+body.live-active #section-live .section-sub {
+  display: none;
+}
+
+/* Give the canvas the full stage while training */
+body.live-active .app-main { padding-top: 16px; }
+
+body.live-active .canvas-wrapper,
+body.live-active #analysis-canvas {
+  max-height: 78vh;
+}
+
+/* --- Next Video button (upload flow only) --------------------------------- */
+.next-video-btn {
+  display: block;
+  margin: 18px auto 0;
+  width: fit-content;
+}

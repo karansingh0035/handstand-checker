@@ -286,6 +286,7 @@ function drawCueOverlay(canvasCtx, text) {
 async function runFinalFormScoring() {
   if (analysisFinalized || isLiveSessionMode) return; 
   analysisFinalized = true;
+  if (nextVideoBtn) nextVideoBtn.hidden = false;
 
   const videoWidth = processingVideoElement.videoWidth;
   const videoHeight = processingVideoElement.videoHeight;
@@ -747,6 +748,7 @@ uploadBtn.addEventListener("click", () => {
   const skillConfig = prepareSession();
   if (!skillConfig) return;
 
+  if (nextVideoBtn) nextVideoBtn.hidden = true;
   coachingAdvice.textContent = `Analyzing your ${skillConfig.label.toLowerCase()}...`;
 
   mainTitle.style.display = "none";
@@ -775,7 +777,16 @@ goLiveBtn.addEventListener("click", async () => {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
+      video: {
+        facingMode: "environment",
+        // Landscape defaults from getUserMedia (e.g. 1280x720) squish the
+        // canvas short on a portrait phone viewport, since it's fed
+        // straight into canvasWrapper.style.aspectRatio further down.
+        // Asking for a portrait-shaped stream when the viewport itself is
+        // portrait fixes this at the source instead of patching it after.
+        width: { ideal: window.innerHeight >= window.innerWidth ? 720 : 1280 },
+        height: { ideal: window.innerHeight >= window.innerWidth ? 1280 : 720 }
+      },
       audio: false
     });
   } catch (err) {
@@ -840,6 +851,7 @@ stopLiveBtn.addEventListener("click", () => {
   setAudioMuted(false);
 
   if (ended && ended.report) {
+    saveSessionToHistory(ended);
     renderSessionReport(ended.report);
   }
 });
@@ -886,3 +898,347 @@ muteLiveBtn.addEventListener("click", () => {
 closeSessionReportBtn.addEventListener("click", () => {
   resetToHome();
 });
+/* =========================================================================
+   6️⃣ MULTI-SECTION SHELL: ROUTER, SKILL CHIPS, PROGRESS DASHBOARD
+   Appended for the 4-section redesign. Everything above this block is
+   unchanged — this layer only moves the shared workspace between sections
+   and adds the Progress view. It deliberately does not touch the analysis
+   pipeline, the live session controller, or any existing handler.
+   ========================================================================= */
+
+const navEl = document.getElementById("app-nav");
+const navToggle = document.getElementById("nav-toggle");
+const sharedWorkspace = document.getElementById("shared-workspace");
+const liveMount = document.getElementById("live-mount");
+const videoMount = document.getElementById("video-mount");
+const liveSkillChips = document.getElementById("live-skill-chips");
+const progressContent = document.getElementById("progress-content");
+
+/**
+ * Moves the shared workspace into the given section's mount point.
+ * appendChild MOVES a node rather than copying it, so element identity,
+ * IDs, and every previously attached event listener survive the move —
+ * which is why none of the earlier app.js wiring needs to change.
+ */
+function mountWorkspace(target) {
+  const mount = target === "live" ? liveMount : target === "video" ? videoMount : null;
+  if (!mount) {
+    sharedWorkspace.classList.remove("is-mounted");
+    return;
+  }
+  if (sharedWorkspace.parentElement !== mount) {
+    mount.appendChild(sharedWorkspace);
+  }
+  sharedWorkspace.classList.add("is-mounted");
+}
+
+function setSection(target) {
+  // Guard: never tear the user out of a running live session by accident.
+  if (liveSession.isActive && target !== "live") {
+    const ok = confirm(
+      "A live session is still running. Leaving this tab keeps the camera and timer going — " +
+      "use the stop button to end it properly. Continue?"
+    );
+    if (!ok) return;
+  }
+
+  document.body.dataset.section = target;
+
+  navEl.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.target === target);
+  });
+
+  navEl.classList.remove("is-open");
+  mountWorkspace(target);
+
+  if (target === "progress") {
+    renderProgress();
+  }
+
+  // The canvas was sized while possibly hidden; re-sync it on reveal.
+  if ((target === "live" || target === "video") && processingVideoElement) {
+    const w = processingVideoElement.videoWidth;
+    const h = processingVideoElement.videoHeight;
+    if (w && h) {
+      canvasWrapper.style.aspectRatio = `${w} / ${h}`;
+    }
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+navEl.addEventListener("click", (event) => {
+  const btn = event.target.closest(".nav-btn");
+  if (btn && btn.dataset.target) setSection(btn.dataset.target);
+});
+
+navToggle.addEventListener("click", () => {
+  navEl.classList.toggle("is-open");
+});
+
+document.querySelectorAll("[data-goto]").forEach((btn) => {
+  btn.addEventListener("click", () => setSection(btn.dataset.goto));
+});
+
+/* ---------------- Live section: quick skill chips ---------------------- */
+
+function renderSkillChips() {
+  if (!liveSkillChips) return;
+  const skills = getSupportedLiveSkills();
+  liveSkillChips.innerHTML = skills
+    .map(
+      (s) =>
+        `<button type="button" class="skill-chip" data-skill="${escapeHtml(s.key)}">${escapeHtml(s.label)}</button>`
+    )
+    .join("");
+}
+
+if (liveSkillChips) {
+  liveSkillChips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".skill-chip");
+    if (!chip) return;
+    // Chips are a convenience only: they fill the same #skill-input the
+    // existing prepareLiveSession()/resolveLiveSkill() path already reads,
+    // so there is exactly one source of truth for the selected skill.
+    skillInput.value = chip.dataset.skill;
+    liveSkillChips.querySelectorAll(".skill-chip").forEach((c) => {
+      c.classList.toggle("is-selected", c === chip);
+    });
+  });
+}
+
+/* ---------------- Progress: real local session history ------------------ */
+
+const HISTORY_KEY = "calixai_session_history";
+const HISTORY_LIMIT = 100;
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn("Could not read session history:", err);
+    return [];
+  }
+}
+
+function saveSessionToHistory(ended) {
+  if (!ended || !ended.report) return;
+  try {
+    const history = loadHistory();
+    history.push({
+      date: new Date().toISOString(),
+      durationMs: ended.report.durationMs || 0,
+      segments: (ended.segments || []).map((seg) => ({
+        skill: seg.skill,
+        label: seg.label || seg.skill,
+        type: seg.type,
+        reps: seg.reps || 0,
+        bestHoldMs: seg.bestHoldMs || 0,
+        performed: seg.validation ? seg.validation.performed : false,
+        topFault: seg.faults && seg.faults.length ? seg.faults[0].key : null
+      }))
+    });
+    while (history.length > HISTORY_LIMIT) history.shift();
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (err) {
+    console.warn("Could not save session history:", err);
+  }
+}
+
+function renderProgress() {
+  if (!progressContent) return;
+  const history = loadHistory();
+
+  if (history.length === 0) {
+    progressContent.innerHTML = `
+      <div class="progress-empty">
+        <h3>No sessions recorded yet</h3>
+        <p>
+          Finish a live training session and your reps, hold times, and most common
+          form faults will show up here. History is stored only in this browser.
+        </p>
+        <button type="button" class="cta-btn primary" data-goto="live">Start Live Training</button>
+      </div>`;
+    progressContent.querySelectorAll("[data-goto]").forEach((btn) => {
+      btn.addEventListener("click", () => setSection(btn.dataset.goto));
+    });
+    return;
+  }
+
+  // Aggregate only segments the engine actually confirmed were performed,
+  // so unverified/"not detected" attempts never inflate these numbers.
+  let totalMs = 0;
+  let totalReps = 0;
+  let totalHoldMs = 0;
+  const bySkill = new Map();
+
+  history.forEach((session) => {
+    totalMs += session.durationMs || 0;
+    (session.segments || []).forEach((seg) => {
+      if (!seg.performed) return;
+      totalReps += seg.reps || 0;
+      totalHoldMs += seg.bestHoldMs || 0;
+
+      const entry = bySkill.get(seg.skill) || {
+        label: seg.label,
+        type: seg.type,
+        sessions: 0,
+        bestReps: 0,
+        bestHoldMs: 0,
+        faults: new Map()
+      };
+      entry.sessions++;
+      entry.bestReps = Math.max(entry.bestReps, seg.reps || 0);
+      entry.bestHoldMs = Math.max(entry.bestHoldMs, seg.bestHoldMs || 0);
+      if (seg.topFault) {
+        entry.faults.set(seg.topFault, (entry.faults.get(seg.topFault) || 0) + 1);
+      }
+      bySkill.set(seg.skill, entry);
+    });
+  });
+
+  const hours = (totalMs / 3600000).toFixed(1);
+  const holdSeconds = Math.round(totalHoldMs / 1000);
+
+  const metricsHtml = `
+    <div class="metric-banner">
+      <div class="metric-tile">
+        <div class="metric-value">${history.length}</div>
+        <span class="metric-label">Sessions</span>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-value">${hours}h</div>
+        <span class="metric-label">Training time</span>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-value">${totalReps}</div>
+        <span class="metric-label">Total reps</span>
+      </div>
+      <div class="metric-tile">
+        <div class="metric-value">${holdSeconds}s</div>
+        <span class="metric-label">Total hold time</span>
+      </div>
+    </div>`;
+
+  const masteryHtml = bySkill.size
+    ? `<h3 class="section-heading" style="font-size:1.15rem;margin-top:8px;">Skill breakdown</h3>
+       <div class="mastery-grid">
+         ${Array.from(bySkill.entries())
+           .map(([key, entry]) => {
+             const best =
+               entry.type === "hold"
+                 ? `${(entry.bestHoldMs / 1000).toFixed(1)}s`
+                 : `${entry.bestReps} reps`;
+             const topFault = Array.from(entry.faults.entries()).sort((a, b) => b[1] - a[1])[0];
+             const faultHtml = topFault
+               ? `<div class="mastery-fault">Most common fault: ${escapeHtml(topFault[0].replace(/_/g, " "))} (${topFault[1]}&times;)</div>`
+               : "";
+             return `
+               <article class="mastery-card">
+                 <div class="mastery-head">
+                   <h4>${escapeHtml(entry.label)}</h4>
+                   <span class="mastery-best">${best}</span>
+                 </div>
+                 <div class="mastery-meta">${entry.sessions} session${entry.sessions === 1 ? "" : "s"} &middot; personal best</div>
+                 ${faultHtml}
+               </article>`;
+           })
+           .join("")}
+       </div>`
+    : "";
+
+  const recent = history.slice(-8).reverse();
+  const sessionsHtml = `
+    <h3 class="section-heading" style="font-size:1.15rem;margin-top:8px;">Recent sessions</h3>
+    <div class="session-list">
+      ${recent
+        .map((s) => {
+          const skills = (s.segments || [])
+            .filter((seg) => seg.performed)
+            .map((seg) => seg.label);
+          const label = skills.length ? skills.join(", ") : "No skills confirmed";
+          const mins = Math.round((s.durationMs || 0) / 60000);
+          return `
+            <div class="session-row">
+              <span class="session-date">${new Date(s.date).toLocaleDateString()}</span>
+              <span class="session-skills">${escapeHtml(label)}</span>
+              <span>${mins}m</span>
+            </div>`;
+        })
+        .join("")}
+    </div>
+    <div class="progress-actions">
+      <button type="button" class="text-btn" id="clear-history-btn">Clear history</button>
+    </div>`;
+
+  progressContent.innerHTML = metricsHtml + masteryHtml + sessionsHtml;
+
+  const clearBtn = document.getElementById("clear-history-btn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      if (confirm("Delete all locally stored session history? This cannot be undone.")) {
+        localStorage.removeItem(HISTORY_KEY);
+        renderProgress();
+      }
+    });
+  }
+}
+
+/* ---------------- Boot ------------------------------------------------- */
+
+renderSkillChips();
+setSection("home");
+
+/* -------------- Live-session chrome: full-stage canvas ------------------
+   When a live session is running we hide the section heading, blurb, and
+   skill chips so the canvas sits at the top of the viewport instead of
+   being pushed below a screenful of controls.
+
+   This watches the live toolbar's `hidden` attribute rather than hooking
+   the go-live / stop-live handlers directly: the toolbar is the single
+   thing that is shown exactly while a session is live, and observing it
+   means this stays correct for every path that can end a session (stop
+   button, camera failure, report close) without duplicating that logic. */
+if (liveToolbar) {
+  const syncLiveChrome = () => {
+    const isLive = !liveToolbar.hidden;
+    document.body.classList.toggle("live-active", isLive);
+    if (isLive) window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  new MutationObserver(syncLiveChrome).observe(liveToolbar, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+
+  syncLiveChrome();
+}
+
+/* -------------- Next Video: reset the upload UI without a reload -------- */
+
+const nextVideoBtn = document.getElementById("next-video-btn");
+
+if (nextVideoBtn) {
+  nextVideoBtn.addEventListener("click", () => {
+    nextVideoBtn.hidden = true;
+
+    // Mirror the state uploadBtn's handler expects to start fresh from,
+    // without touching anything live-session related.
+    uploadedVideoFile = null;
+    hiddenVideoInput.value = "";
+    previewVideo.src = "";
+    previewContainer.style.display = "none";
+    skillInput.value = "";
+
+    analysisWorkspace.style.display = "none";
+    uploadBar.style.display = "";
+
+    formScoreValue.textContent = "--";
+    coachingAdvice.textContent = "Awaiting video upload to run biomechanical analysis...";
+
+    landmarkHistory = [];
+    analysisFinalized = false;
+  });
+}
