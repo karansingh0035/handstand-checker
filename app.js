@@ -242,9 +242,7 @@ function onPoseResults(results) {
   // (see beginFrameProcessing's else-branch), so cover vs. contain is a
   // no-op there either way — preserving the "identical behavior to
   // before" guarantee the comment below describes for that path.
-  const fitScale = (isLiveSessionMode
-    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
-    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
+ const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
   const drawWidth = sourceWidth * fitScale;
   const drawHeight = sourceHeight * fitScale;
   const offsetX = (canvasWidth - drawWidth) / 2;
@@ -471,23 +469,15 @@ function beginFrameProcessing() {
   const MAX_CANVAS_WIDTH = 640;
   const MAX_CANVAS_HEIGHT = 640;
 
-  if (isLiveSessionMode) {
-    // 🆕 FIX: previously this branch still sized the canvas BITMAP to the
-    // camera's native resolution (nativeWidth/nativeHeight) even though
-    // the wrapper's on-screen box shape is fixed by CSS
-    // (body.live-active .canvas-wrapper's 72vh height) and ignores that
-    // resolution entirely. That mismatch — a landscape-shaped bitmap
-    // (e.g. 640x360) displayed inside a tall 72vh box — is exactly what
-    // produced a short strip of video pinned in one corner with a large
-    // empty gap in the rest of the box. The canvas bitmap is now sized to
-    // match the WRAPPER'S OWN rendered box instead, and onPoseResults
-    // manually letterboxes the actual video frame (whatever shape it
-    // turns out to be) inside that bitmap — so the box size no longer
-    // depends on the camera's reported resolution at all.
-    const rect = canvasWrapper.getBoundingClientRect();
-    const boxScale = Math.min(1, MAX_CANVAS_WIDTH / rect.width, MAX_CANVAS_HEIGHT / rect.height);
-    analysisCanvas.width = Math.max(1, Math.round(rect.width * boxScale));
-    analysisCanvas.height = Math.max(1, Math.round(rect.height * boxScale));
+if (isLiveSessionMode) {
+    // Exact screen pixel match taaki stretch ya blur na ho
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+
+    // Mobile performance ke liye 720p aspect ratio match
+    const scale = Math.min(1, 720 / screenW);
+    analysisCanvas.width = Math.round(screenW * scale);
+    analysisCanvas.height = Math.round(screenH * scale);
     canvasWrapper.style.aspectRatio = "";
   } else {
     // Upload mode: lock the box to the video's real aspect ratio, as before.
@@ -865,18 +855,15 @@ goLiveBtn.addEventListener("click", async () => {
   const skillConfig = prepareLiveSession();
   if (!skillConfig) return;
 
-  let stream;
+let stream;
   try {
+    const isPortrait = window.innerHeight >= window.innerWidth;
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: "environment",
-        // Landscape defaults from getUserMedia (e.g. 1280x720) squish the
-        // canvas short on a portrait phone viewport, since it's fed
-        // straight into canvasWrapper.style.aspectRatio further down.
-        // Asking for a portrait-shaped stream when the viewport itself is
-        // portrait fixes this at the source instead of patching it after.
-        width: { ideal: window.innerHeight >= window.innerWidth ? 720 : 1280 },
-        height: { ideal: window.innerHeight >= window.innerWidth ? 1280 : 720 }
+        facingMode: "user", // Front camera by default for workout check
+        width: { ideal: isPortrait ? 480 : 640, max: 1280 },
+        height: { ideal: isPortrait ? 640 : 480, max: 720 },
+        frameRate: { ideal: 30, max: 30 }
       },
       audio: false
     });
