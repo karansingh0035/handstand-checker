@@ -242,7 +242,11 @@ function onPoseResults(results) {
   // (see beginFrameProcessing's else-branch), so cover vs. contain is a
   // no-op there either way — preserving the "identical behavior to
   // before" guarantee the comment below describes for that path.
- const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
+ // 📱 Live mode me Math.max (Cover fit) use karo taaki koi upar-neeche black bars na aayein
+  const fitScale = (isLiveSessionMode
+    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
+    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
+
   const drawWidth = sourceWidth * fitScale;
   const drawHeight = sourceHeight * fitScale;
   const offsetX = (canvasWidth - drawWidth) / 2;
@@ -250,12 +254,6 @@ function onPoseResults(results) {
   const letterboxTransform = [drawWidth / canvasWidth, 0, 0, drawHeight / canvasHeight, offsetX, offsetY];
 
   ctx.save();
-  // drawing_utils' drawConnectors/drawLandmarks (and the drawImage call
-  // right below) all compute positions as fractions of ctx.canvas.width/
-  // height — this transform remaps that "full canvas" coordinate space
-  // onto the actual letterboxed rectangle, so the video image and the
-  // skeleton land in exactly the same place without needing to touch
-  // drawing_utils itself.
   ctx.setTransform(...letterboxTransform);
 
   try {
@@ -860,7 +858,7 @@ let stream;
     const isPortrait = window.innerHeight >= window.innerWidth;
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: "user", // Front camera by default for workout check
+        facingMode: { ideal: "environment" }, // Front camera by default for workout check
         width: { ideal: isPortrait ? 480 : 640, max: 1280 },
         height: { ideal: isPortrait ? 640 : 480, max: 720 },
         frameRate: { ideal: 30, max: 30 }
