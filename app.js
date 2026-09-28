@@ -243,9 +243,16 @@ function onPoseResults(results) {
   // no-op there either way — preserving the "identical behavior to
   // before" guarantee the comment below describes for that path.
  // 📱 Live mode me Math.max (Cover fit) use karo taaki koi upar-neeche black bars na aayein
-  const fitScale = (isLiveSessionMode
-    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
-    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
+// Screen aur video ka aspect ratio
+  const screenRatio = canvasWidth / canvasHeight;
+  const sourceRatio = sourceWidth / sourceHeight;
+
+  // Agar stream ulti (landscape) aa rahi hai toh Math.min karo taaki wide view bache, 
+  // warna standard cover scale
+  let fitScale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  if (Math.abs(screenRatio - sourceRatio) > 0.6) {
+    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  }
 
   const drawWidth = sourceWidth * fitScale;
   const drawHeight = sourceHeight * fitScale;
@@ -859,8 +866,8 @@ let stream;
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" }, // Front camera by default for workout check
-        width: { ideal: isPortrait ? 480 : 640, max: 1280 },
-        height: { ideal: isPortrait ? 640 : 480, max: 720 },
+      width: { ideal: isPortrait ? 1080 : 1920, min: 720 },
+        height: { ideal: isPortrait ? 1920 : 1080, min: 1280 },
         frameRate: { ideal: 30, max: 30 }
       },
       audio: false
