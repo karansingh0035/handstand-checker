@@ -56,7 +56,7 @@ let pendingSkillKey = null;
 let currentVisualCue = null;
 let visualCueTimer = null;
 
-const MAX_LIVE_LANDMARK_HISTORY = 1800; // Bug #5 Fix: Limit memory during long live streams
+const MAX_LIVE_LANDMARK_HISTORY = 1800; // Limit memory during long live streams
 
 const liveSession = new LiveSessionController({
   onStateChange: syncLiveChrome
@@ -197,61 +197,18 @@ function onPoseResults(results) {
   const canvasWidth = analysisCanvas.width;
   const canvasHeight = analysisCanvas.height;
 
-  // 🆕 FIX: previously this was an unconditional
-  // drawImage(imageSource, 0, 0, canvasWidth, canvasHeight) — a hard
-  // stretch to fill the canvas regardless of the source's real aspect
-  // ratio. That was invisible in upload mode (the canvas bitmap is sized
-  // to exactly match the video's native dimensions there, so "stretch"
-  // and "fit" happen to be the same thing) but broke live mode once the
-  // canvas bitmap stopped being tied to the camera's native resolution
-  // (see beginFrameProcessing) — relying on CSS object-fit to fix it
-  // after the fact turned out to be inconsistent for canvas specifically,
-  // and it also wouldn't have kept the skeleton overlay aligned with the
-  // now-repositioned video image anyway. This computes a manual
-  // "contain" fit (preserve aspect ratio, center, letterbox) and applies
-  // the exact same transform to the skeleton draw calls below, so both
-  // land in the same place. In upload mode this scale works out to
-  // exactly 1 with a zero offset — identical behavior to before.
   const sourceWidth = imageSource.videoWidth || imageSource.width || canvasWidth;
   const sourceHeight = imageSource.videoHeight || imageSource.height || canvasHeight;
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // 🆕 REAL FIX for the short/mostly-black live canvas: this was using
-  // Math.min (a "contain" fit) unconditionally. Contain preserves the
-  // WHOLE source frame by scaling to fit inside the destination box,
-  // letterboxing whichever axis doesn't match — which is correct for
-  // upload mode (canvas is sized to the video's own dimensions, so
-  // contain/cover are equivalent there), but wrong for live mode: a
-  // phone's rear camera very often hands getUserMedia a LANDSCAPE-shaped
-  // frame (e.g. 1280x720) regardless of the portrait `ideal` hint
-  // requested above — ideal is only ever a hint, hardware/OS can and does
-  // ignore it — while canvasWidth/canvasHeight are now correctly tall
-  // (portrait, matching the wrapper's CSS box). Containing a landscape
-  // source inside a tall portrait box necessarily leaves a large empty
-  // gap on whichever axis has room to spare — that's not a bug in the
-  // math, it's just what "contain" does when the shapes genuinely differ
-  // this much. Every earlier fix attempt (see comments above/below)
-  // correctly fixed the CONTAINER's shape but never addressed that the
-  // video CONTENT is a different shape than the container, which contain
-  // will always letterbox on principle.
-  // A live camera view should behave like a normal camera app: fill the
-  // box, crop the sides evenly if needed — a "cover" fit (Math.max
-  // instead of Math.min). Upload mode keeps "contain" since the canvas
-  // there is already sized to exactly match the video's own dimensions
-  // (see beginFrameProcessing's else-branch), so cover vs. contain is a
-  // no-op there either way — preserving the "identical behavior to
-  // before" guarantee the comment below describes for that path.
- // 📱 Live mode me Math.max (Cover fit) use karo taaki koi upar-neeche black bars na aayein
-// Screen aur video ka aspect ratio
+  // Balanced scaling: excessive crop khatam karne ke liye
+  let fitScale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
   const screenRatio = canvasWidth / canvasHeight;
   const sourceRatio = sourceWidth / sourceHeight;
 
-  // Agar stream ulti (landscape) aa rahi hai toh Math.min karo taaki wide view bache, 
-  // warna standard cover scale
-  let fitScale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-  if (Math.abs(screenRatio - sourceRatio) > 0.6) {
-    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  if (Math.abs(screenRatio - sourceRatio) > 0.45 && isLiveSessionMode) {
+    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) * 1.15;
   }
 
   const drawWidth = sourceWidth * fitScale;
@@ -273,7 +230,6 @@ function onPoseResults(results) {
   if (results.poseLandmarks) {
     landmarkHistory.push(results.poseLandmarks);
 
-    // Bug #5 Fix: Prevent memory leak during long live streams
     if (isLiveSessionMode && landmarkHistory.length > MAX_LIVE_LANDMARK_HISTORY) {
       landmarkHistory.shift();
     }
@@ -304,12 +260,6 @@ function onPoseResults(results) {
         }
 
         if (currentVisualCue) {
-          // 🆕 The cue banner is UI chrome, not part of the video/skeleton
-          // — it must stay in real screen-pixel space regardless of the
-          // letterbox transform above, or its font size and position
-          // would shift with whatever resolution the camera happens to
-          // report. Drop to identity just for this draw, then restore the
-          // letterbox transform for the skeleton below.
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           drawCueOverlay(ctx, currentVisualCue);
           ctx.setTransform(...letterboxTransform);
@@ -337,7 +287,6 @@ function onPoseResults(results) {
   ctx.restore();
 }
 
-// Bug #9 Fix: Safe roundRect polyfill fallback
 function drawCueOverlay(canvasCtx, text) {
   const padding = 16;
   canvasCtx.font = 'bold 20px sans-serif';
@@ -431,7 +380,7 @@ function generatePlaceholderAdvice(faults, skillLabel) {
 let isFrameInFlight = false;
 
 function scheduleNextFrame() {
-  if (processingVideoElement.requestVideoFrameCallback) {
+  if (processingVideoElement && processingVideoElement.requestVideoFrameCallback) {
     processingVideoElement.requestVideoFrameCallback(() => startVideoProcessingLoop());
   } else {
     requestAnimationFrame(() => startVideoProcessingLoop());
@@ -474,18 +423,14 @@ function beginFrameProcessing() {
   const MAX_CANVAS_WIDTH = 640;
   const MAX_CANVAS_HEIGHT = 640;
 
-if (isLiveSessionMode) {
-    // Exact screen pixel match taaki stretch ya blur na ho
+  if (isLiveSessionMode) {
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
-
-    // Mobile performance ke liye 720p aspect ratio match
     const scale = Math.min(1, 720 / screenW);
     analysisCanvas.width = Math.round(screenW * scale);
     analysisCanvas.height = Math.round(screenH * scale);
     canvasWrapper.style.aspectRatio = "";
   } else {
-    // Upload mode: lock the box to the video's real aspect ratio, as before.
     const scale = Math.min(1, MAX_CANVAS_WIDTH / nativeWidth, MAX_CANVAS_HEIGHT / nativeHeight);
     analysisCanvas.width = Math.round(nativeWidth * scale);
     analysisCanvas.height = Math.round(nativeHeight * scale);
@@ -656,7 +601,6 @@ function updateLiveCounter(frameResult) {
   }
 }
 
-// Bug #6 Fix: Null guard fallback for skills missing in SKILLS
 function syncLiveChrome(state = {}) {
   if (!liveToolbar) return;
   const currentKey = state.currentSkill || liveSession.currentSkill;
@@ -860,15 +804,15 @@ goLiveBtn.addEventListener("click", async () => {
   const skillConfig = prepareLiveSession();
   if (!skillConfig) return;
 
-let stream;
+  let stream;
   try {
     const isPortrait = window.innerHeight >= window.innerWidth;
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "environment" }, // Front camera by default for workout check
-      width: { ideal: isPortrait ? 1080 : 1920, min: 720 },
-        height: { ideal: isPortrait ? 1920 : 1080, min: 1280 },
-        frameRate: { ideal: 30, max: 30 }
+        facingMode: { ideal: "environment" }, // Default Rear/Back camera
+        width: { ideal: isPortrait ? 720 : 1280 },
+        height: { ideal: isPortrait ? 1280 : 720 },
+        frameRate: { ideal: 30, min: 24 }
       },
       audio: false
     });
@@ -981,14 +925,8 @@ muteLiveBtn.addEventListener("click", () => {
 closeSessionReportBtn.addEventListener("click", () => {
   resetToHome();
 });
-/* =========================================================================
-   6️⃣ MULTI-SECTION SHELL: ROUTER, SKILL CHIPS, PROGRESS DASHBOARD
-   Appended for the 4-section redesign. Everything above this block is
-   unchanged — this layer only moves the shared workspace between sections
-   and adds the Progress view. It deliberately does not touch the analysis
-   pipeline, the live session controller, or any existing handler.
-   ========================================================================= */
 
+// 6️⃣ MULTI-SECTION SHELL: ROUTER, SKILL CHIPS, PROGRESS DASHBOARD
 const navEl = document.getElementById("app-nav");
 const navToggle = document.getElementById("nav-toggle");
 const sharedWorkspace = document.getElementById("shared-workspace");
@@ -997,12 +935,6 @@ const videoMount = document.getElementById("video-mount");
 const liveSkillChips = document.getElementById("live-skill-chips");
 const progressContent = document.getElementById("progress-content");
 
-/**
- * Moves the shared workspace into the given section's mount point.
- * appendChild MOVES a node rather than copying it, so element identity,
- * IDs, and every previously attached event listener survive the move —
- * which is why none of the earlier app.js wiring needs to change.
- */
 function mountWorkspace(target) {
   const mount = target === "live" ? liveMount : target === "video" ? videoMount : null;
   if (!mount) {
@@ -1016,7 +948,6 @@ function mountWorkspace(target) {
 }
 
 function setSection(target) {
-  // Guard: never tear the user out of a running live session by accident.
   if (liveSession.isActive && target !== "live") {
     const ok = confirm(
       "A live session is still running. Leaving this tab keeps the camera and timer going — " +
@@ -1038,10 +969,6 @@ function setSection(target) {
     renderProgress();
   }
 
-  // The canvas was sized while possibly hidden; re-sync it on reveal.
-  // Same live-vs-upload split as beginFrameProcessing: live mode must NOT
-  // get locked to the camera's raw (unreliable) aspect ratio here either,
-  // or switching back into the Live tab would silently re-break the box.
   if (target === "video" && processingVideoElement) {
     const w = processingVideoElement.videoWidth;
     const h = processingVideoElement.videoHeight;
@@ -1068,8 +995,6 @@ document.querySelectorAll("[data-goto]").forEach((btn) => {
   btn.addEventListener("click", () => setSection(btn.dataset.goto));
 });
 
-/* ---------------- Live section: quick skill chips ---------------------- */
-
 function renderSkillChips() {
   if (!liveSkillChips) return;
   const skills = getSupportedLiveSkills();
@@ -1085,17 +1010,12 @@ if (liveSkillChips) {
   liveSkillChips.addEventListener("click", (event) => {
     const chip = event.target.closest(".skill-chip");
     if (!chip) return;
-    // Chips are a convenience only: they fill the same #skill-input the
-    // existing prepareLiveSession()/resolveLiveSkill() path already reads,
-    // so there is exactly one source of truth for the selected skill.
     skillInput.value = chip.dataset.skill;
     liveSkillChips.querySelectorAll(".skill-chip").forEach((c) => {
       c.classList.toggle("is-selected", c === chip);
     });
   });
 }
-
-/* ---------------- Progress: real local session history ------------------ */
 
 const HISTORY_KEY = "calixai_session_history";
 const HISTORY_LIMIT = 100;
@@ -1155,8 +1075,6 @@ function renderProgress() {
     return;
   }
 
-  // Aggregate only segments the engine actually confirmed were performed,
-  // so unverified/"not detected" attempts never inflate these numbers.
   let totalMs = 0;
   let totalReps = 0;
   let totalHoldMs = 0;
@@ -1274,21 +1192,9 @@ function renderProgress() {
   }
 }
 
-/* ---------------- Boot ------------------------------------------------- */
-
 renderSkillChips();
 setSection("home");
 
-/* -------------- Live-session chrome: full-stage canvas ------------------
-   When a live session is running we hide the section heading, blurb, and
-   skill chips so the canvas sits at the top of the viewport instead of
-   being pushed below a screenful of controls.
-
-   This watches the live toolbar's `hidden` attribute rather than hooking
-   the go-live / stop-live handlers directly: the toolbar is the single
-   thing that is shown exactly while a session is live, and observing it
-   means this stays correct for every path that can end a session (stop
-   button, camera failure, report close) without duplicating that logic. */
 if (liveToolbar) {
   const syncLiveChrome = () => {
     const isLive = !liveToolbar.hidden;
@@ -1304,28 +1210,20 @@ if (liveToolbar) {
   syncLiveChrome();
 }
 
-/* -------------- Next Video: reset the upload UI without a reload -------- */
-
 const nextVideoBtn = document.getElementById("next-video-btn");
 
 if (nextVideoBtn) {
   nextVideoBtn.addEventListener("click", () => {
     nextVideoBtn.hidden = true;
-
-    // Mirror the state uploadBtn's handler expects to start fresh from,
-    // without touching anything live-session related.
     uploadedVideoFile = null;
     hiddenVideoInput.value = "";
     previewVideo.src = "";
     previewContainer.style.display = "none";
     skillInput.value = "";
-
     analysisWorkspace.style.display = "none";
     uploadBar.style.display = "";
-
     formScoreValue.textContent = "--";
     coachingAdvice.textContent = "Awaiting video upload to run biomechanical analysis...";
-
     landmarkHistory = [];
     analysisFinalized = false;
   });
