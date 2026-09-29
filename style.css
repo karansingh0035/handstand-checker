@@ -347,23 +347,28 @@ body::before {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 1000 !important;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .modal-card {
+  position: relative;
+  z-index: 1001;
   width: min(520px, 100%);
   max-height: min(86vh, 720px);
-  overflow: auto;
-  background: rgba(18, 18, 18, 0.96);
-  border: 1px solid rgba(255, 90, 31, 0.28);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(18, 18, 18, 0.98);
+  border: 1px solid rgba(255, 90, 31, 0.35);
   border-radius: 16px;
   padding: 22px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
 }
 
 .modal-card h2 {
@@ -382,25 +387,34 @@ body::before {
   display: grid;
   gap: 8px;
   margin-bottom: 18px;
-  max-height: 280px;      /* Restrict height so modal remains compact */
+  max-height: 320px;      /* Restrict height so modal remains compact */
   overflow-y: auto;       /* Enable vertical scrollbar when skills exceed height */
+  -webkit-overflow-scrolling: touch;
   padding-right: 6px;     /* Prevent scrollbar overlapping the selection cards */
 }
 
 .skill-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.skill-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 90, 31, 0.4);
 }
 
 .skill-option:has(input:checked) {
-  border-color: rgba(255, 90, 31, 0.7);
-  background: rgba(255, 90, 31, 0.12);
+  border-color: rgba(255, 90, 31, 0.85);
+  background: rgba(255, 90, 31, 0.15);
+  box-shadow: 0 0 12px rgba(255, 90, 31, 0.2);
 }
 
 .skill-option input {
@@ -1200,20 +1214,20 @@ body.live-active #next-video-btn {
   width: fit-content;
 }
 /* 📱 Full-screen live camera view like native camera apps */
-body.live-active {
-  overflow: hidden; /* Scroll lock taaki screen jump na kare */
+body.live-active[data-section="live"] {
+  overflow: hidden; /* Scroll lock so the camera viewport stays rock-solid */
 }
 
-body.live-active .app-header,
-body.live-active .app-nav,
-body.live-active #live-skill-chips,
-body.live-active #section-live .section-heading,
-body.live-active #section-live .section-sub,
-body.live-active #next-video-btn {
+body.live-active[data-section="live"] .app-header,
+body.live-active[data-section="live"] .app-nav,
+body.live-active[data-section="live"] #live-skill-chips,
+body.live-active[data-section="live"] #section-live .section-heading,
+body.live-active[data-section="live"] #section-live .section-sub,
+body.live-active[data-section="live"] #next-video-btn {
   display: none !important;
 }
 
-body.live-active .app-main {
+body.live-active[data-section="live"] .app-main {
   padding: 0 !important;
   margin: 0 !important;
   max-width: 100vw !important;
@@ -1221,7 +1235,7 @@ body.live-active .app-main {
   height: 100dvh !important; /* Mobile dynamic viewport cover */
 }
 
-body.live-active .analysis-workspace {
+body.live-active[data-section="live"] .analysis-workspace {
   width: 100vw !important;
   height: 100dvh !important;
   margin: 0 !important;
@@ -1229,7 +1243,7 @@ body.live-active .analysis-workspace {
   gap: 0 !important;
 }
 
-body.live-active .canvas-wrapper {
+body.live-active[data-section="live"] .canvas-wrapper {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -1242,15 +1256,15 @@ body.live-active .canvas-wrapper {
   background-color: #000000 !important;
 }
 
-body.live-active #analysis-canvas {
+body.live-active[data-section="live"] #analysis-canvas {
   width: 100vw !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
-  object-fit: cover !important; /* Full screen bina black bars ke fill karega */
+  object-fit: cover !important;
 }
 
-/* Floating controls screen ke top par float rahenge */
-body.live-active .live-toolbar {
+/* Floating controls over top of full-screen live camera */
+body.live-active[data-section="live"] .live-toolbar {
   position: fixed !important;
   top: 16px !important;
   left: 12px !important;
@@ -1258,6 +1272,14 @@ body.live-active .live-toolbar {
   z-index: 105 !important;
 }
 
-body.live-active .pause-overlay {
+body.live-active[data-section="live"] .pause-overlay {
   z-index: 102 !important;
+}
+
+/* Modals ALWAYS sit comfortably on top of the live full-screen feed and live toolbar */
+.modal-backdrop {
+  z-index: 1000 !important;
+}
+.modal-backdrop .modal-card {
+  z-index: 1001 !important;
 }

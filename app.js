@@ -202,13 +202,16 @@ function onPoseResults(results) {
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // Balanced scaling: excessive crop khatam karne ke liye
-  let fitScale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight) || 1;
+  // Balanced scaling: cover fit in live mode with graceful zoom if aspect ratios differ
+  let fitScale = (isLiveSessionMode
+    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
+    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
+
   const screenRatio = canvasWidth / canvasHeight;
   const sourceRatio = sourceWidth / sourceHeight;
 
   if (Math.abs(screenRatio - sourceRatio) > 0.45 && isLiveSessionMode) {
-    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) * 1.15;
+    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) * 1.2;
   }
 
   const drawWidth = sourceWidth * fitScale;
@@ -416,6 +419,21 @@ function startVideoProcessingLoop() {
   scheduleNextFrame();
 }
 
+function updateLiveCanvasDimensions() {
+  if (!processingVideoElement || !isLiveSessionMode) return;
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  // High-DPI crisp scaling (capped at 2x and 1280 max dimension for smooth 30+ FPS)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const targetW = Math.round(screenW * dpr);
+  const targetH = Math.round(screenH * dpr);
+  const maxDim = 1280;
+  const scale = Math.min(1, maxDim / Math.max(targetW, targetH));
+  analysisCanvas.width = Math.max(320, Math.round(targetW * scale));
+  analysisCanvas.height = Math.max(240, Math.round(targetH * scale));
+  canvasWrapper.style.aspectRatio = "";
+}
+
 function beginFrameProcessing() {
   const nativeWidth = processingVideoElement.videoWidth;
   const nativeHeight = processingVideoElement.videoHeight;
@@ -424,12 +442,7 @@ function beginFrameProcessing() {
   const MAX_CANVAS_HEIGHT = 640;
 
   if (isLiveSessionMode) {
-    const screenW = window.innerWidth;
-    const screenH = window.innerHeight;
-    const scale = Math.min(1, 720 / screenW);
-    analysisCanvas.width = Math.round(screenW * scale);
-    analysisCanvas.height = Math.round(screenH * scale);
-    canvasWrapper.style.aspectRatio = "";
+    updateLiveCanvasDimensions();
   } else {
     const scale = Math.min(1, MAX_CANVAS_WIDTH / nativeWidth, MAX_CANVAS_HEIGHT / nativeHeight);
     analysisCanvas.width = Math.round(nativeWidth * scale);
@@ -695,6 +708,16 @@ function applySkillSwitch(nextSkillKey) {
     currentSkillBadge.textContent = activeSkillConfig.label || nextSkillKey;
   }
 
+  if (skillInput) {
+    skillInput.value = nextSkillKey;
+  }
+
+  if (liveSkillChips) {
+    liveSkillChips.querySelectorAll(".skill-chip").forEach((c) => {
+      c.classList.toggle("is-selected", c.dataset.skill === nextSkillKey);
+    });
+  }
+
   currentVisualCue = null;
 
   const isHold = activeSkillConfig.type === "hold";
@@ -766,6 +789,9 @@ function resetToHome() {
   formScoreValue.textContent = "--";
   dashboardRow.style.display = "flex";
   isLiveSessionMode = false;
+  if (typeof setSection === "function") {
+    setSection("home");
+  }
 }
 
 // 5️⃣ SINGLE SOURCE OF TRUTH: UPLOADED VIDEO ENGINE ANALYSIS
@@ -807,15 +833,23 @@ goLiveBtn.addEventListener("click", async () => {
   let stream;
   try {
     const isPortrait = window.innerHeight >= window.innerWidth;
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" }, // Default Rear/Back camera
-        width: { ideal: isPortrait ? 720 : 1280 },
-        height: { ideal: isPortrait ? 1280 : 720 },
-        frameRate: { ideal: 30, min: 24 }
-      },
-      audio: false
-    });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" }, // Default Rear/Back camera
+          width: { ideal: isPortrait ? 720 : 1280 },
+          height: { ideal: isPortrait ? 1280 : 720 },
+          frameRate: { ideal: 30, min: 20 }
+        },
+        audio: false
+      });
+    } catch (idealErr) {
+      // Fallback if strict device constraints are unsupported
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    }
   } catch (err) {
     console.error("Camera access failed:", err);
     alert("Couldn't access your camera. Please allow camera permission and try again.");
@@ -894,13 +928,42 @@ cancelSkillSwitchBtn.addEventListener("click", () => {
 
 confirmSkillSwitchBtn.addEventListener("click", () => {
   const selected = skillSwitcherList.querySelector('input[name="live-skill"]:checked');
-  const nextKey = selected ? selected.value : pendingSkillKey;
-  applySkillSwitch(nextKey);
+  const nextKey = selected ? selected.value : (pendingSkillKey || liveSession.currentSkill);
+  if (nextKey) {
+    applySkillSwitch(nextKey);
+  } else {
+    closeSkillSwitcher();
+  }
 });
 
 skillSwitcherList.addEventListener("change", (event) => {
   if (event.target && event.target.name === "live-skill") {
     pendingSkillKey = event.target.value;
+  }
+});
+
+// Quick switch on double-click
+skillSwitcherList.addEventListener("dblclick", (event) => {
+  const option = event.target.closest(".skill-option");
+  if (option) {
+    const input = option.querySelector('input[name="live-skill"]');
+    if (input && input.value) {
+      applySkillSwitch(input.value);
+    }
+  }
+});
+
+// Dismiss modal if user clicks outside the modal card
+skillSwitcherModal.addEventListener("click", (event) => {
+  if (event.target === skillSwitcherModal) {
+    closeSkillSwitcher();
+  }
+});
+
+// Escape key dismisses the skill switcher
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !skillSwitcherModal.hidden) {
+    closeSkillSwitcher();
   }
 });
 
@@ -977,10 +1040,19 @@ function setSection(target) {
     }
   } else if (target === "live") {
     canvasWrapper.style.aspectRatio = "";
+    if (isLiveSessionMode) {
+      updateLiveCanvasDimensions();
+    }
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+window.addEventListener("resize", () => {
+  if (isLiveSessionMode && processingVideoElement && processingVideoElement.readyState >= 2) {
+    updateLiveCanvasDimensions();
+  }
+});
 
 navEl.addEventListener("click", (event) => {
   const btn = event.target.closest(".nav-btn");
