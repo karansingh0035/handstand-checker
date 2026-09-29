@@ -202,17 +202,10 @@ function onPoseResults(results) {
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // Balanced scaling: cover fit in live mode with graceful zoom if aspect ratios differ
-  let fitScale = (isLiveSessionMode
+  // 📱 Live mode: Math.max (Cover fit) ensures full-screen coverage with no black bars (matches native camera app / Instagram / TikTok)
+  const fitScale = (isLiveSessionMode
     ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
     : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
-
-  const screenRatio = canvasWidth / canvasHeight;
-  const sourceRatio = sourceWidth / sourceHeight;
-
-  if (Math.abs(screenRatio - sourceRatio) > 0.45 && isLiveSessionMode) {
-    fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight) * 1.2;
-  }
 
   const drawWidth = sourceWidth * fitScale;
   const drawHeight = sourceHeight * fitScale;
