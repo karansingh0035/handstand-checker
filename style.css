@@ -551,11 +551,23 @@ body::before {
   color: #fb923c !important;
 }
 
-#analysis-canvas {
-  max-height: 60vh;
+.analysis-video {
   width: 100%;
   height: 100%;
   display: block;
+  object-fit: contain;
+  background-color: #000000;
+}
+
+#analysis-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  background: transparent;
 }
 
 .dashboard-row {
@@ -1256,11 +1268,22 @@ body.live-active .canvas-wrapper {
   background-color: #000000 !important;
 }
 
-body.live-active #analysis-canvas {
+body.live-active .analysis-video {
   width: 100vw !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
   object-fit: cover !important;
+}
+
+body.live-active #analysis-canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  pointer-events: none !important;
+  background: transparent !important;
 }
 
 /* Floating controls over top of full-screen live camera */

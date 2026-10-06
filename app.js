@@ -29,6 +29,7 @@ const removeBtn = document.getElementById("remove-btn");
 const mainTitle = document.querySelector(".text");
 const uploadBar = document.querySelector(".upload-bar");
 const analysisWorkspace = document.getElementById("analysis-workspace");
+const analysisVideo = document.getElementById("analysis-video");
 const analysisCanvas = document.getElementById("analysis-canvas");
 const canvasWrapper = document.querySelector(".canvas-wrapper");
 const dashboardRow = document.querySelector(".dashboard-row");
@@ -41,7 +42,7 @@ const ctx = analysisCanvas.getContext("2d");
 
 let uploadedVideoFile = null;
 let poseEngine = null;
-let processingVideoElement = null;
+let processingVideoElement = analysisVideo;
 
 let landmarkHistory = [];      
 let analysisFinalized = false; 
@@ -202,7 +203,7 @@ function onPoseResults(results) {
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // 📱 Live mode: Math.max (Cover fit) ensures full-screen coverage with no black bars (matches native camera app / Instagram / TikTok)
+  // Align skeleton overlay with CSS object-fit (cover in live, contain in upload)
   const fitScale = (isLiveSessionMode
     ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
     : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight)) || 1;
@@ -214,14 +215,6 @@ function onPoseResults(results) {
   const letterboxTransform = [drawWidth / canvasWidth, 0, 0, drawHeight / canvasHeight, offsetX, offsetY];
 
   ctx.save();
-  ctx.setTransform(...letterboxTransform);
-
-  try {
-    ctx.drawImage(imageSource, 0, 0, canvasWidth, canvasHeight);
-  } catch (err) {
-    ctx.restore();
-    return;
-  }
 
   if (results.poseLandmarks) {
     landmarkHistory.push(results.poseLandmarks);
@@ -258,7 +251,6 @@ function onPoseResults(results) {
         if (currentVisualCue) {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           drawCueOverlay(ctx, currentVisualCue);
-          ctx.setTransform(...letterboxTransform);
         }
       }
     } else {
@@ -267,6 +259,8 @@ function onPoseResults(results) {
         repDisplay.innerText = "--";
       }
     }
+
+    ctx.setTransform(...letterboxTransform);
 
     drawConnectors(ctx, displayLandmarks, POSE_CONNECTIONS, {
       color: '#FFFFFF',
@@ -412,36 +406,32 @@ function startVideoProcessingLoop() {
   scheduleNextFrame();
 }
 
-function updateLiveCanvasDimensions() {
-  if (!processingVideoElement || !isLiveSessionMode) return;
-  const screenW = window.innerWidth;
-  const screenH = window.innerHeight;
-  // High-DPI crisp scaling (capped at 2x and 1280 max dimension for smooth 30+ FPS)
+function syncCanvasDimensions() {
+  const rect = canvasWrapper.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width || window.innerWidth));
+  const height = Math.max(1, Math.round(rect.height || window.innerHeight));
+
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const targetW = Math.round(screenW * dpr);
-  const targetH = Math.round(screenH * dpr);
-  const maxDim = 1280;
-  const scale = Math.min(1, maxDim / Math.max(targetW, targetH));
-  analysisCanvas.width = Math.max(320, Math.round(targetW * scale));
-  analysisCanvas.height = Math.max(240, Math.round(targetH * scale));
-  canvasWrapper.style.aspectRatio = "";
+  const targetW = Math.round(width * dpr);
+  const targetH = Math.round(height * dpr);
+
+  if (analysisCanvas.width !== targetW || analysisCanvas.height !== targetH) {
+    analysisCanvas.width = targetW;
+    analysisCanvas.height = targetH;
+  }
 }
 
 function beginFrameProcessing() {
   const nativeWidth = processingVideoElement.videoWidth;
   const nativeHeight = processingVideoElement.videoHeight;
 
-  const MAX_CANVAS_WIDTH = 640;
-  const MAX_CANVAS_HEIGHT = 640;
-
   if (isLiveSessionMode) {
-    updateLiveCanvasDimensions();
-  } else {
-    const scale = Math.min(1, MAX_CANVAS_WIDTH / nativeWidth, MAX_CANVAS_HEIGHT / nativeHeight);
-    analysisCanvas.width = Math.round(nativeWidth * scale);
-    analysisCanvas.height = Math.round(nativeHeight * scale);
+    canvasWrapper.style.aspectRatio = "";
+  } else if (nativeWidth && nativeHeight) {
     canvasWrapper.style.aspectRatio = `${nativeWidth} / ${nativeHeight}`;
   }
+
+  syncCanvasDimensions();
 
   if (!poseEngine) {
     initMediaPipe();
@@ -782,6 +772,12 @@ function resetToHome() {
   formScoreValue.textContent = "--";
   dashboardRow.style.display = "flex";
   isLiveSessionMode = false;
+  if (processingVideoElement) {
+    processingVideoElement.pause();
+    processingVideoElement.src = "";
+    processingVideoElement.srcObject = null;
+  }
+  ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
   if (typeof setSection === "function") {
     setSection("home");
   }
@@ -804,10 +800,11 @@ uploadBtn.addEventListener("click", () => {
   uploadBar.style.display = "none";
   analysisWorkspace.style.display = "flex";
 
-  processingVideoElement = document.createElement("video");
+  processingVideoElement = analysisVideo || document.getElementById("analysis-video") || document.createElement("video");
   processingVideoElement.muted = true;
   processingVideoElement.playsInline = true;
   processingVideoElement.loop = false;
+  processingVideoElement.srcObject = null;
 
   processingVideoElement.onloadeddata = () => {
     beginFrameProcessing();
@@ -872,9 +869,10 @@ goLiveBtn.addEventListener("click", async () => {
   uploadBar.style.display = "none";
   analysisWorkspace.style.display = "flex";
 
-  processingVideoElement = document.createElement("video");
+  processingVideoElement = analysisVideo || document.getElementById("analysis-video") || document.createElement("video");
   processingVideoElement.muted = true;
   processingVideoElement.playsInline = true;
+  processingVideoElement.src = "";
   processingVideoElement.srcObject = stream;
 
   processingVideoElement.onloadeddata = () => {
@@ -886,6 +884,9 @@ function stopLiveCamera() {
   if (liveStream) {
     liveStream.getTracks().forEach((track) => track.stop());
     liveStream = null;
+  }
+  if (processingVideoElement) {
+    processingVideoElement.srcObject = null;
   }
 }
 
@@ -1031,19 +1032,18 @@ function setSection(target) {
     if (w && h) {
       canvasWrapper.style.aspectRatio = `${w} / ${h}`;
     }
+    syncCanvasDimensions();
   } else if (target === "live") {
     canvasWrapper.style.aspectRatio = "";
-    if (isLiveSessionMode) {
-      updateLiveCanvasDimensions();
-    }
+    syncCanvasDimensions();
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 window.addEventListener("resize", () => {
-  if (isLiveSessionMode && processingVideoElement && processingVideoElement.readyState >= 2) {
-    updateLiveCanvasDimensions();
+  if (processingVideoElement && processingVideoElement.readyState >= 2) {
+    syncCanvasDimensions();
   }
 });
 
@@ -1291,5 +1291,11 @@ if (nextVideoBtn) {
     coachingAdvice.textContent = "Awaiting video upload to run biomechanical analysis...";
     landmarkHistory = [];
     analysisFinalized = false;
+    if (processingVideoElement) {
+      processingVideoElement.pause();
+      processingVideoElement.src = "";
+      processingVideoElement.srcObject = null;
+    }
+    ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
   });
 }
