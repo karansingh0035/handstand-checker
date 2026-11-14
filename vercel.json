@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm --prefix trueform-react run build",
+  "outputDirectory": "trueform-react/dist",
+  "installCommand": "npm --prefix trueform-react install",
+  "framework": "vite"
+}

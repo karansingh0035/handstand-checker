@@ -1,0 +1,11 @@
+{
+  "name": "calixai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix trueform-react run dev",
+    "build": "npm --prefix trueform-react run build",
+    "lint": "npm --prefix trueform-react run lint",
+    "test": "node test/continuous-session.test.js && node test/hold-engine.test.js"
+  }
+}
