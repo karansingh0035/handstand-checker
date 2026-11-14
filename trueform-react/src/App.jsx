@@ -76,6 +76,7 @@ export function App() {
             formScore={tracker.formScore}
             coachingAdvice={tracker.coachingAdvice}
             analysisFinalized={tracker.analysisFinalized}
+            activeCueText={tracker.activeCueText}
             startUploadAnalysis={tracker.startUploadAnalysis}
             resetUpload={tracker.resetUpload}
           />

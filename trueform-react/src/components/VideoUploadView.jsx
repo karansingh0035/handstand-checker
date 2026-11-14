@@ -10,6 +10,7 @@ export function VideoUploadView({
   formScore,
   coachingAdvice,
   analysisFinalized,
+  activeCueText,
   startUploadAnalysis,
   resetUpload
 }) {
@@ -172,7 +173,29 @@ export function VideoUploadView({
             containerRef={containerRef}
             isLive={false}
             aspectRatio={videoAspectRatio}
-          />
+          >
+            {activeCueText && (
+              <div
+                className="cue-badge"
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 10,
+                  background: 'rgba(255, 90, 31, 0.9)',
+                  color: '#fff',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                  pointerEvents: 'none'
+                }}
+              >
+                {activeCueText}
+              </div>
+            )}
+          </PoseCanvas>
 
           <div className="dashboard-row">
             <div className="data-card score-card">

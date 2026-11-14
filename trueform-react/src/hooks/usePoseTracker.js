@@ -12,6 +12,31 @@ import {
   resolveSkill
 } from '../utils/skillRegistry.js';
 import { saveSessionToHistory } from '../utils/historyManager.js';
+import {
+  getMediaPipePose,
+  ensureMediaPipeSingleton,
+  subscribeToPoseResults
+} from '../utils/mediaPipeSingleton.js';
+
+function drawCueOverlay(ctx, text, canvasWidth) {
+  const padding = 16;
+  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  const textWidth = ctx.measureText(text).width;
+  const x = Math.max(padding, (canvasWidth - textWidth) / 2);
+  const y = 50;
+
+  ctx.fillStyle = 'rgba(255, 90, 31, 0.9)';
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x - padding, y - 28, textWidth + padding * 2, 40, 8);
+    ctx.fill();
+  } else {
+    ctx.fillRect(x - padding, y - 28, textWidth + padding * 2, 40);
+  }
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, x, y);
+}
 
 export function usePoseTracker() {
   // DOM element refs
@@ -22,13 +47,12 @@ export function usePoseTracker() {
   // Engine & Singleton refs
   const engineRef = useRef(null);
   const liveSessionRef = useRef(null);
-  const poseEngineRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const animationFrameIdRef = useRef(null);
   const visualCueTimerRef = useRef(null);
   const timerIntervalRef = useRef(null);
 
-  // State mirror refs (to keep poseEngine.onResults pure and avoid re-binding)
+  // State mirror refs (to keep event callbacks pure and avoid stale closures)
   const isLiveModeRef = useRef(false);
   const isSessionActiveRef = useRef(false);
   const isPausedRef = useRef(false);
@@ -37,6 +61,8 @@ export function usePoseTracker() {
   const activeSkillConfigRef = useRef(SKILLS.pushup || null);
   const landmarkHistoryRef = useRef([]);
   const isFrameInFlightRef = useRef(false);
+  const analysisFinalizedRef = useRef(false);
+  const currentVisualCueRef = useRef(null);
 
   // Throttling refs
   const lastRepsRef = useRef(-1);
@@ -155,11 +181,14 @@ export function usePoseTracker() {
       return;
     }
 
-    if (poseEngineRef.current) {
+    const pose = getMediaPipePose();
+    if (pose) {
       isFrameInFlightRef.current = true;
-      poseEngineRef.current
+      pose
         .send({ image: video })
-        .catch(() => {})
+        .catch((err) => {
+          console.warn('Pose send dropped frame:', err);
+        })
         .finally(() => {
           isFrameInFlightRef.current = false;
         });
@@ -168,7 +197,7 @@ export function usePoseTracker() {
     scheduleNextFrameRef.current?.();
   }, []);
 
-  // Pose results listener registered ONCE with MediaPipe singleton via ref forwarder
+  // Pose results listener registered ONCE with MediaPipe singleton
   const handlePoseResults = useCallback((results) => {
     if (!results) return;
     const canvas = canvasRef.current;
@@ -226,99 +255,104 @@ export function usePoseTracker() {
 
       let displayLandmarks = results.poseLandmarks;
 
-      if (isLive) {
-        if (!isPausedRef.current && engineRef.current) {
+      // Real-time evaluation through TrueFormEngine (both live and upload if supported)
+      if (!isPausedRef.current && engineRef.current) {
+        try {
           const frameResult = engineRef.current.processFrame(results.poseLandmarks);
-          displayLandmarks = frameResult.landmarks || displayLandmarks;
+          if (frameResult) {
+            displayLandmarks = frameResult.landmarks || displayLandmarks;
 
-          if (liveSessionRef.current && liveSessionRef.current.isActive) {
-            liveSessionRef.current.ingestFrame(frameResult);
-          }
-
-          // Throttled UI state sync (only when reps or hold time changes)
-          const reps =
-            typeof frameResult.reps === 'number'
-              ? frameResult.reps
-              : frameResult.repCount || 0;
-          const holdSeconds = Math.floor((frameResult.holdTimeMs || 0) / 100);
-
-          if (
-            frameResult.type === 'hold'
-              ? holdSeconds !== lastHoldSecondsRef.current
-              : reps !== lastRepsRef.current
-          ) {
-            lastRepsRef.current = reps;
-            lastHoldSecondsRef.current = holdSeconds;
-            setLiveStats({
-              type: frameResult.type,
-              reps: reps,
-              holdTimeMs: frameResult.holdTimeMs || 0
-            });
-          }
-
-          // Active visual cue display
-          if (frameResult.activeCue) {
-            setActiveCueText(frameResult.activeCue.cue);
-            if (visualCueTimerRef.current) {
-              clearTimeout(visualCueTimerRef.current);
+            if (isLive && liveSessionRef.current && liveSessionRef.current.isActive) {
+              liveSessionRef.current.ingestFrame(frameResult);
             }
-            visualCueTimerRef.current = setTimeout(() => {
-              setActiveCueText(null);
-            }, 2500);
+
+            if (isLive) {
+              const reps =
+                typeof frameResult.reps === 'number'
+                  ? frameResult.reps
+                  : frameResult.repCount || 0;
+              const holdSeconds = Math.floor((frameResult.holdTimeMs || 0) / 100);
+
+              if (
+                frameResult.type === 'hold'
+                  ? holdSeconds !== lastHoldSecondsRef.current
+                  : reps !== lastRepsRef.current
+              ) {
+                lastRepsRef.current = reps;
+                lastHoldSecondsRef.current = holdSeconds;
+                setLiveStats({
+                  type: frameResult.type,
+                  reps: reps,
+                  holdTimeMs: frameResult.holdTimeMs || 0
+                });
+              }
+            }
+
+            // Active visual cue display
+            if (frameResult.activeCue) {
+              const cueText = frameResult.activeCue.cue;
+              currentVisualCueRef.current = cueText;
+              setActiveCueText(cueText);
+              if (visualCueTimerRef.current) {
+                clearTimeout(visualCueTimerRef.current);
+              }
+              visualCueTimerRef.current = setTimeout(() => {
+                currentVisualCueRef.current = null;
+                setActiveCueText(null);
+              }, 2500);
+            }
           }
+        } catch (engineErr) {
+          console.warn('Engine frame processing notice:', engineErr);
         }
       }
 
       // Draw skeleton transformed to match video positioning
       ctx.setTransform(...letterboxTransform);
 
-      if (window.drawConnectors && window.POSE_CONNECTIONS) {
-        window.drawConnectors(ctx, displayLandmarks, window.POSE_CONNECTIONS, {
+      const dc =
+        window.drawConnectors ||
+        (typeof drawConnectors !== 'undefined' ? drawConnectors : null);
+      const pc =
+        window.POSE_CONNECTIONS ||
+        (typeof POSE_CONNECTIONS !== 'undefined' ? POSE_CONNECTIONS : null);
+      const dl =
+        window.drawLandmarks ||
+        (typeof drawLandmarks !== 'undefined' ? drawLandmarks : null);
+
+      if (dc && pc) {
+        dc(ctx, displayLandmarks, pc, {
           color: '#FFFFFF',
           lineWidth: 3
         });
       }
-      if (window.drawLandmarks) {
-        window.drawLandmarks(ctx, displayLandmarks, {
+      if (dl) {
+        dl(ctx, displayLandmarks, {
           color: '#FF5A1F',
           lineWidth: 1,
           radius: 4
         });
+      }
+
+      // Render prominent cue overlay directly on canvas
+      if (currentVisualCueRef.current) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        drawCueOverlay(ctx, currentVisualCueRef.current, canvasWidth);
       }
     }
 
     ctx.restore();
   }, [syncCanvasDimensions]);
 
-  // Lazy MediaPipe initialization
-  const ensureMediaPipe = useCallback(() => {
-    if (poseEngineRef.current) return poseEngineRef.current;
-    if (typeof window === 'undefined' || !window.Pose) return null;
-
-    const pose = new window.Pose({
-      locateFile: (file) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
-    });
-
-    pose.setOptions({
-      modelComplexity: 0,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    // Register ONE stable delegate that always forwards to latest ref to prevent stale closures
-    pose.onResults((results) => {
+  // Connect to MediaPipe singleton subscriber
+  useEffect(() => {
+    ensureMediaPipeSingleton();
+    const unsubscribe = subscribeToPoseResults((results) => {
       handlePoseResultsRef.current?.(results);
     });
-
-    const dummyCanvas = document.createElement('canvas');
-    dummyCanvas.width = 64;
-    dummyCanvas.height = 64;
-    pose.send({ image: dummyCanvas }).catch(() => {});
-
-    poseEngineRef.current = pose;
-    return pose;
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Lazy Engine & LiveSession initialization
@@ -341,6 +375,8 @@ export function usePoseTracker() {
 
   // Upload video scoring & feedback
   const runFinalFormScoring = useCallback(async () => {
+    if (analysisFinalizedRef.current) return;
+    analysisFinalizedRef.current = true;
     setAnalysisFinalized(true);
     setIsAnalyzing(false);
 
@@ -350,8 +386,8 @@ export function usePoseTracker() {
 
     if (!video || !skillConfig) return;
 
-    const videoWidth = video.videoWidth;
-    const videoHeight = video.videoHeight;
+    const videoWidth = video.videoWidth || 640;
+    const videoHeight = video.videoHeight || 480;
 
     if (typeof window.validateVideoQuality === 'function') {
       const quality = window.validateVideoQuality(history);
@@ -452,7 +488,7 @@ export function usePoseTracker() {
     async (skillKey = 'pushup') => {
       warmUpSpeech();
       ensureEngine();
-      ensureMediaPipe();
+      ensureMediaPipeSingleton();
 
       const resolvedSkill = SKILLS[skillKey] || SKILLS.pushup;
       activeSkillConfigRef.current = resolvedSkill;
@@ -516,14 +552,17 @@ export function usePoseTracker() {
         video.onloadeddata = () => {
           requestAnimationFrame(() => {
             syncCanvasDimensions();
-            video.play().then(() => {
-              scheduleNextFrame();
-            }).catch(() => {});
+            video
+              .play()
+              .then(() => {
+                scheduleNextFrame();
+              })
+              .catch(() => {});
           });
         };
       }
     },
-    [ensureEngine, ensureMediaPipe, startLiveClock, syncCanvasDimensions, scheduleNextFrame]
+    [ensureEngine, startLiveClock, syncCanvasDimensions, scheduleNextFrame]
   );
 
   // Stop live session
@@ -538,6 +577,7 @@ export function usePoseTracker() {
       clearTimeout(visualCueTimerRef.current);
       visualCueTimerRef.current = null;
     }
+    currentVisualCueRef.current = null;
     setActiveCueText(null);
 
     let ended = null;
@@ -585,7 +625,7 @@ export function usePoseTracker() {
     setAudioMuted(!enabled);
   }, []);
 
-  // Change skill
+  // Change skill during live session
   const changeSkill = useCallback((nextSkillKey) => {
     if (!liveSessionRef.current || !liveSessionRef.current.isActive) return;
     const switchResult = liveSessionRef.current.changeSkill(nextSkillKey);
@@ -596,7 +636,9 @@ export function usePoseTracker() {
 
     const engineKey = LIVE_ENGINE_SKILL_MAP[nextSkillKey] || nextSkillKey;
     if (engineRef.current) {
-      engineRef.current.setMovement(engineKey);
+      try {
+        engineRef.current.setMovement(engineKey);
+      } catch {}
     }
 
     const skillConfig = SKILLS[nextSkillKey] || {
@@ -615,6 +657,7 @@ export function usePoseTracker() {
       reps: 0,
       holdTimeMs: 0
     });
+    currentVisualCueRef.current = null;
     setActiveCueText(null);
   }, []);
 
@@ -633,11 +676,22 @@ export function usePoseTracker() {
         return;
       }
 
-      ensureMediaPipe();
+      ensureEngine();
+      const engineKey = LIVE_ENGINE_SKILL_MAP[skillConfig.key] || skillConfig.key;
+      if (engineKey && engineRef.current) {
+        try {
+          engineRef.current.setMovement(engineKey);
+        } catch {}
+      }
+
+      ensureMediaPipeSingleton();
       activeSkillConfigRef.current = skillConfig;
       isLiveModeRef.current = false;
       isSessionActiveRef.current = true;
+      analysisFinalizedRef.current = false;
       landmarkHistoryRef.current = [];
+      currentVisualCueRef.current = null;
+      setActiveCueText(null);
       setAnalysisFinalized(false);
       setIsAnalyzing(true);
       setFormScore('--');
@@ -651,23 +705,38 @@ export function usePoseTracker() {
         video.srcObject = null;
         video.src = URL.createObjectURL(file);
 
+        // Crucial: Handle video ended directly on the element
+        const onVideoEnded = () => {
+          isSessionActiveRef.current = false;
+          runFinalFormScoringRef.current?.();
+        };
+        video.addEventListener('ended', onVideoEnded, { once: true });
+
         video.onloadeddata = () => {
           requestAnimationFrame(() => {
             syncCanvasDimensions();
-            video.play().then(() => {
-              scheduleNextFrame();
-            }).catch(() => {});
+            video
+              .play()
+              .then(() => {
+                scheduleNextFrame();
+              })
+              .catch((err) => {
+                console.warn('Video playback warning:', err);
+              });
           });
         };
       }
     },
-    [ensureMediaPipe, scheduleNextFrame, syncCanvasDimensions]
+    [ensureEngine, scheduleNextFrame, syncCanvasDimensions]
   );
 
   // Reset upload session
   const resetUpload = useCallback(() => {
     isSessionActiveRef.current = false;
     isLiveModeRef.current = false;
+    analysisFinalizedRef.current = false;
+    currentVisualCueRef.current = null;
+    setActiveCueText(null);
     setAnalysisFinalized(false);
     setIsAnalyzing(false);
     setFormScore('--');
@@ -707,12 +776,8 @@ export function usePoseTracker() {
       if (visualCueTimerRef.current) {
         clearTimeout(visualCueTimerRef.current);
       }
-      if (poseEngineRef.current) {
-        try {
-          poseEngineRef.current.close();
-        } catch {}
-        poseEngineRef.current = null;
-      }
+      currentVisualCueRef.current = null;
+      // Note: We do NOT call pose.close() here to keep the WebAssembly module warm and ready
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }

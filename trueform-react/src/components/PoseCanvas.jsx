@@ -43,7 +43,6 @@ export function PoseCanvas({
       className="canvas-wrapper"
       style={aspectRatio ? { aspectRatio } : undefined}
     >
-      {children}
       <video
         ref={videoRef}
         id="analysis-video"
@@ -52,6 +51,7 @@ export function PoseCanvas({
         muted
       />
       <canvas ref={canvasRef} id="analysis-canvas" />
+      {children}
     </div>
   );
 }
