@@ -1,0 +1,160 @@
+// 🤸 PLANCHE FORM SCORING
+// Scope (v1): standard full planche or straddle/tuck variations (evaluated based 
+// on a straight line from shoulder to hip). Scored via one representative median pose 
+// across the clip. Typically filmed side-on, so it is side-aware.
+const scorePlanche = (function () {
+  const PLANCHE_MIN_CONFIDENT_FRAMES = 15;
+
+  const isPlancheFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  return function scorePlanche(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isPlancheFrameConfident);
+
+    if (confidentFrames.length < PLANCHE_MIN_CONFIDENT_FRAMES) {
+      return {
+        status: "low_confidence",
+        message:
+          "Couldn't get a clear side-on view of your body for enough frames to score this planche. Ensure your entire body stays in the frame.",
+      };
+    }
+
+    // Extract a stable representative pose using the median position of joints
+    const shoulderMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "shoulderMid");
+    const hipMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "hipMid");
+    const ankleMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "ankleMid");
+    const wristMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "wristMid");
+    const elbowMid = medianJointPoint(confidentFrames, videoWidth, videoHeight, "elbowMid");
+
+    if (!shoulderMid || !hipMid || !ankleMid || !wristMid || !elbowMid) {
+      return {
+        status: "low_confidence",
+        message: "Key tracking landmarks were blocked or obscured during the hold.",
+      };
+    }
+
+    const faults = [];
+
+    // 1️⃣ Elbow Lockout: Arms must be perfectly straight (~180°)
+    const elbowAngle = angleBetween(wristMid, elbowMid, shoulderMid);
+    const elbowDeviation = elbowAngle === null ? 0 : 180 - elbowAngle;
+    if (elbowDeviation > 15) {
+      faults.push({
+        id: "bent_arms",
+        severity: elbowDeviation > 30 ? "major" : "moderate",
+        detail: `Your arms are bent by roughly ${elbowDeviation.toFixed(0)}°. Focus on locking your elbows completely to support your weight.`,
+      });
+    }
+
+    // 2️⃣ Body Line Alignment: Straight line from shoulders to hips to ankles
+    const bodyLineAngle = angleBetween(shoulderMid, hipMid, ankleMid);
+   const bodyLineDeviation = signedBodyLineDeviation(shoulderMid, hipMid, ankleMid);
+    if (Math.abs(bodyLineDeviation) > 15) {
+      faults.push({
+        id: "hip_misalignment",
+        severity: Math.abs(bodyLineDeviation) > 28 ? "major" : "moderate",
+        detail: `Your hips are ${bodyLineDeviation > 0 ? "sagging down" : "piking upward"} by about ${Math.abs(bodyLineDeviation).toFixed(0)}° from a straight line.`,
+      });
+    }
+
+    // 3️⃣ Horizontal Ground Alignment: The body line should be parallel to the ground
+    // 🆕 Same fix as backlever.js/frontlever.js/90degreehold.js/pushup.js
+    const dx = ankleMid.x - shoulderMid.x;
+    const dy = ankleMid.y - shoulderMid.y;
+    const dz = (ankleMid.z || 0) - (shoulderMid.z || 0);
+    const horizontalDist = Math.hypot(dx, dz);
+    const tiltFromHorizontal = Math.abs((Math.atan2(dy, horizontalDist) * 180) / Math.PI);
+    if (tiltFromHorizontal > 15) {
+      faults.push({
+        id: "body_not_level",
+        severity: tiltFromHorizontal > 25 ? "major" : "moderate",
+        detail: `Your entire body is tilted ${tiltFromHorizontal.toFixed(0)}° away from horizontal. Push down hard to raise your hips and legs level with your shoulders.`,
+      });
+    }
+
+    // --- Deduct score by fault severity ---
+    const severityPenalty = { moderate: 8, major: 18 };
+    let score = 100;
+    faults.forEach((f) => {
+      score -= severityPenalty[f.severity] || 0;
+    });
+    score = Math.max(0, Math.round(score));
+
+    return {
+      status: "ok",
+      score,
+      faults,
+      angles: {
+        elbowAngle: round1(elbowAngle),
+        bodyLineAngle: round1(bodyLineAngle),
+        tiltFromHorizontal: round1(tiltFromHorizontal),
+      },
+    };
+  };
+})();
+const validatePlancheVideo = (function () {
+  const isFrameConfident = (landmarks) =>
+    isSideVisible(landmarks, LEFT_SIDE_LANDMARKS) || isSideVisible(landmarks, RIGHT_SIDE_LANDMARKS);
+
+  const VALIDATION_MIN_CONFIDENT_FRAMES = 15;
+  const NOT_DETECTED_RATIO = 0.35;
+  const UNCLEAR_RATIO = 0.6;
+
+  function isPlausiblePlancheFrame(joints) {
+    if (!joints || !joints.shoulderMid || !joints.wristMid || !joints.hipMid) {
+      return false;
+    }
+
+    // Shoulders elevated above or near wrist level, body horizontal
+    const isBodyHorizontal = Math.abs(joints.shoulderMid.y - joints.hipMid.y) < 150;
+    const isHandsBelowShoulders = joints.wristMid.y >= joints.shoulderMid.y - 20;
+
+    return isBodyHorizontal && isHandsBelowShoulders;
+  }
+
+  return function validatePlancheVideo(history, videoWidth, videoHeight) {
+    const confidentFrames = history.filter(isFrameConfident);
+
+    if (confidentFrames.length < VALIDATION_MIN_CONFIDENT_FRAMES) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: 0,
+        message:
+          "Couldn't track enough clear frames. Record a direct side-on view of your entire body.",
+      };
+    }
+
+    let plausibleCount = 0;
+    for (const frame of confidentFrames) {
+      const joints = getEffectiveJoints(frame, videoWidth, videoHeight);
+      if (isPlausiblePlancheFrame(joints)) plausibleCount++;
+    }
+
+    const ratio = plausibleCount / confidentFrames.length;
+
+    if (ratio < NOT_DETECTED_RATIO) {
+      return {
+        valid: false,
+        status: "not_detected",
+        confidence: ratio,
+        message:
+          "We couldn't detect a planche hold. Ensure your legs and body are suspended parallel to the ground from a clear side angle.",
+      };
+    }
+
+    if (ratio < UNCLEAR_RATIO) {
+      return {
+        valid: false,
+        status: "unclear",
+        confidence: ratio,
+        message:
+          "Planche shape detected, but tracking quality was low. Ensure good lighting and a steady side view.",
+      };
+    }
+
+    return { valid: true, confidence: ratio };
+  };
+})();
+window.validatePlancheVideo = validatePlancheVideo;
+window.scorePlanche = scorePlanche;

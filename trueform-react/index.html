@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CaliXAi — AI Form Coaching</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- MediaPipe Pose CDN Scripts -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Calisthenics Skill Evaluators (Classic scripts loaded before main.jsx) -->
+    <script src="/skills/pose-utils.js"></script>
+    <script src="/skills/handstand.js"></script>
+    <script src="/skills/pushup.js"></script>
+    <script src="/skills/lsit.js"></script>
+    <script src="/skills/handstandpushup.js"></script>
+    <script src="/skills/elbowlever.js"></script>
+    <script src="/skills/planche.js"></script>
+    <script src="/skills/frontlever.js"></script>
+    <script src="/skills/pullup.js"></script>
+    <script src="/skills/muscleup.js"></script>
+    <script src="/skills/backlever.js"></script>
+    <script src="/skills/vsit.js"></script>
+    <script src="/skills/pikepushup.js"></script>
+    <script src="/skills/90degreehold.js"></script>
+    <script src="/skills/crowpose.js"></script>
+    <script src="/skills/frogstand.js"></script>
+    <script src="/skills/straddleplanche.js"></script>
+    <script src="/skills/planchelean.js"></script>
+    <script src="/skills/ninetydegreehspu.js"></script>
+    <script src="/skills/pseudoplanchepushup.js"></script>
+    <script src="/skills/planchepushup.js"></script>
+    <script src="/skills/squat.js"></script>
+
+    <script>
+      window.va =
+        window.va ||
+        function () {
+          (window.vaq = window.vaq || []).push(arguments);
+        };
+      if (window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
+        const s = document.createElement('script');
+        s.defer = true;
+        s.src = '/_vercel/insights/script.js';
+        document.head.appendChild(s);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
