@@ -71,97 +71,101 @@ export function VideoUploadView({
         Upload a clip, name the skill, and get a form score plus AI coaching insights.
       </p>
 
-      {!showWorkspace && (
-        <div className="upload-bar" style={{ marginTop: '20px' }}>
-          <div className="box" id="main-box">
-            {previewUrl && (
-              <div className="preview-container" id="preview-container" style={{ display: 'flex' }}>
-                <div className="thumbnail-wrapper">
-                  <video id="preview-video" src={previewUrl} muted />
-                  <button
-                    type="button"
-                    className="remove-btn"
-                    id="remove-btn"
-                    onClick={handleRemovePreview}
-                  >
-                    &times;
-                  </button>
-                </div>
+      <div
+        className="upload-bar"
+        style={{ display: showWorkspace ? 'none' : 'block', marginTop: '20px' }}
+      >
+        <div className="box" id="main-box">
+          {previewUrl && (
+            <div className="preview-container" id="preview-container" style={{ display: 'flex' }}>
+              <div className="thumbnail-wrapper">
+                <video id="preview-video" src={previewUrl} muted />
+                <button
+                  type="button"
+                  className="remove-btn"
+                  id="remove-btn"
+                  onClick={handleRemovePreview}
+                >
+                  &times;
+                </button>
               </div>
-            )}
-
-            <div className="input-row">
-              <button
-                type="button"
-                className="icon-btn"
-                id="plus"
-                aria-label="Add video"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-
-              <input
-                type="text"
-                id="skill-input"
-                className="text2"
-                placeholder="Name of your skill eg. handstand, lsit, etc."
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleStartAnalysis();
-                }}
-                autoComplete="off"
-              />
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                id="hidden-video-input"
-                accept="video/*"
-                style={{ display: 'none' }}
-                onChange={handleFileChange}
-              />
-
-              <button
-                type="button"
-                className="icon-btn"
-                id="upload"
-                aria-label="Upload and scan"
-                onClick={handleStartAnalysis}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              </button>
             </div>
+          )}
+
+          <div className="input-row">
+            <button
+              type="button"
+              className="icon-btn"
+              id="plus"
+              aria-label="Add video"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+
+            <input
+              type="text"
+              id="skill-input"
+              className="text2"
+              placeholder="Name of your skill eg. handstand, lsit, etc."
+              value={skillInput}
+              onChange={(e) => setSkillInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleStartAnalysis();
+              }}
+              autoComplete="off"
+            />
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              id="hidden-video-input"
+              accept="video/*"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+
+            <button
+              type="button"
+              className="icon-btn"
+              id="upload"
+              aria-label="Upload and scan"
+              onClick={handleStartAnalysis}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {showWorkspace && (
-        <div className="analysis-workspace" id="analysis-workspace" style={{ display: 'flex' }}>
+      <div
+        className="analysis-workspace"
+        id="analysis-workspace"
+        style={{ display: showWorkspace ? 'flex' : 'none' }}
+      >
           <PoseCanvas
             videoRef={videoRef}
             canvasRef={canvasRef}
@@ -196,7 +200,6 @@ export function VideoUploadView({
             </button>
           )}
         </div>
-      )}
     </section>
   );
 }

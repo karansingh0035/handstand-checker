@@ -76,16 +76,32 @@ export function usePoseTracker() {
   // Sync canvas size with video/wrapper
   const syncCanvasDimensions = useCallback(() => {
     const canvas = canvasRef.current;
+    const video = videoRef.current;
     const wrapper = containerRef.current || (canvas ? canvas.parentElement : null);
-    if (!canvas || !wrapper) return;
+    if (!canvas) return;
 
-    const rect = wrapper.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width || window.innerWidth));
-    const height = Math.max(1, Math.round(rect.height || window.innerHeight));
+    let width = 0;
+    let height = 0;
+
+    if (wrapper) {
+      const rect = wrapper.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+    }
+
+    if (!width || !height) {
+      if (video && video.videoWidth && video.videoHeight) {
+        width = video.videoWidth;
+        height = video.videoHeight;
+      } else {
+        width = window.innerWidth || 640;
+        height = window.innerHeight || 480;
+      }
+    }
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const targetW = Math.round(width * dpr);
-    const targetH = Math.round(height * dpr);
+    const targetW = Math.max(1, Math.round(width * dpr));
+    const targetH = Math.max(1, Math.round(height * dpr));
 
     if (canvas.width !== targetW || canvas.height !== targetH) {
       canvas.width = targetW;
@@ -97,6 +113,7 @@ export function usePoseTracker() {
   const scheduleNextFrameRef = useRef(null);
   const processFrameTickRef = useRef(null);
   const runFinalFormScoringRef = useRef(null);
+  const handlePoseResultsRef = useRef(null);
 
   const scheduleNextFrame = useCallback(() => {
     const video = videoRef.current;
@@ -151,12 +168,17 @@ export function usePoseTracker() {
     scheduleNextFrameRef.current?.();
   }, []);
 
-  // Pose results listener registered ONCE with MediaPipe singleton
+  // Pose results listener registered ONCE with MediaPipe singleton via ref forwarder
   const handlePoseResults = useCallback((results) => {
     if (!results) return;
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas) return;
+
+    // Self-healing: if canvas width or height is 0, sync dimensions immediately
+    if (canvas.width === 0 || canvas.height === 0) {
+      syncCanvasDimensions();
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -165,8 +187,11 @@ export function usePoseTracker() {
       results.image || (video && video.readyState >= 2 ? video : null);
     if (!imageSource) return;
 
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
+    const canvasWidth = canvas.width || 640;
+    const canvasHeight = canvas.height || 480;
+    if (canvas.width !== canvasWidth) canvas.width = canvasWidth;
+    if (canvas.height !== canvasHeight) canvas.height = canvasHeight;
+
     const sourceWidth = imageSource.videoWidth || imageSource.width || canvasWidth;
     const sourceHeight = imageSource.videoHeight || imageSource.height || canvasHeight;
 
@@ -263,7 +288,7 @@ export function usePoseTracker() {
     }
 
     ctx.restore();
-  }, []);
+  }, [syncCanvasDimensions]);
 
   // Lazy MediaPipe initialization
   const ensureMediaPipe = useCallback(() => {
@@ -282,7 +307,10 @@ export function usePoseTracker() {
       minTrackingConfidence: 0.5
     });
 
-    pose.onResults(handlePoseResults);
+    // Register ONE stable delegate that always forwards to latest ref to prevent stale closures
+    pose.onResults((results) => {
+      handlePoseResultsRef.current?.(results);
+    });
 
     const dummyCanvas = document.createElement('canvas');
     dummyCanvas.width = 64;
@@ -291,7 +319,7 @@ export function usePoseTracker() {
 
     poseEngineRef.current = pose;
     return pose;
-  }, [handlePoseResults]);
+  }, []);
 
   // Lazy Engine & LiveSession initialization
   const ensureEngine = useCallback(() => {
@@ -385,10 +413,11 @@ export function usePoseTracker() {
   }, []);
 
   useEffect(() => {
+    handlePoseResultsRef.current = handlePoseResults;
     scheduleNextFrameRef.current = scheduleNextFrame;
     processFrameTickRef.current = processFrameTick;
     runFinalFormScoringRef.current = runFinalFormScoring;
-  }, [scheduleNextFrame, processFrameTick, runFinalFormScoring]);
+  }, [handlePoseResults, scheduleNextFrame, processFrameTick, runFinalFormScoring]);
 
   // 1 Hz timer for live session
   const startLiveClock = useCallback(() => {
@@ -485,10 +514,12 @@ export function usePoseTracker() {
         video.src = '';
         video.srcObject = stream;
         video.onloadeddata = () => {
-          syncCanvasDimensions();
-          video.play().then(() => {
-            scheduleNextFrame();
-          }).catch(() => {});
+          requestAnimationFrame(() => {
+            syncCanvasDimensions();
+            video.play().then(() => {
+              scheduleNextFrame();
+            }).catch(() => {});
+          });
         };
       }
     },
@@ -621,10 +652,12 @@ export function usePoseTracker() {
         video.src = URL.createObjectURL(file);
 
         video.onloadeddata = () => {
-          syncCanvasDimensions();
-          video.play().then(() => {
-            scheduleNextFrame();
-          }).catch(() => {});
+          requestAnimationFrame(() => {
+            syncCanvasDimensions();
+            video.play().then(() => {
+              scheduleNextFrame();
+            }).catch(() => {});
+          });
         };
       }
     },
